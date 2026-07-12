@@ -2,11 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#07071a">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Brandon &amp; Minsu · Financial Command</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
@@ -16,12 +15,16 @@
     --text:#f1f5f9; --muted:#6b7280; --label:#9ca3af;
     --gold:#e8c547; --green:#34d399; --red:#f87171; --purple:#a78bfa; --teal:#4ecdc4;
   }
-  body { background:var(--bg); color:var(--text); font-family:'DM Sans',system-ui,sans-serif; min-height:100vh; overflow-x:hidden; }
+  html, body { max-width:100%; overflow-x:hidden; }
+  body { background:var(--bg); color:var(--text); font-family:'DM Sans',system-ui,sans-serif; min-height:100vh; position:relative; }
   .row { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:7px 0; border-bottom:1px solid var(--border); font-size:13px; flex-wrap:wrap; }
   .header { background:var(--surface); border-bottom:1px solid var(--border); padding:14px 14px 0; position:sticky; top:0; z-index:10; }
   .tabs { display:flex; flex-wrap:wrap; gap:4px; margin-top:12px; padding-bottom:8px; }
   .tab { padding:7px 11px; border-radius:6px; border:1px solid var(--border); background:transparent; color:var(--muted); cursor:pointer; font-size:12px; font-weight:500; white-space:nowrap; }
   .tab.active { background:var(--gold); color:#07071a; font-weight:700; border-color:var(--gold); }
+  .subtabs { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:2px; }
+  .subtab { background:transparent; border:none; border-bottom:2px solid transparent; color:var(--muted); padding:6px 2px; margin-right:10px; font-size:13px; font-weight:500; cursor:pointer; font-family:'DM Sans',sans-serif; }
+  .subtab.active { color:var(--gold); border-bottom-color:var(--gold); font-weight:700; }
   .header-top { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap; }
   .header-title { font-family:'Space Mono',monospace; font-size:clamp(13px,4vw,18px); color:var(--gold); font-weight:700; }
   .header-sub { font-size:11px; color:var(--muted); margin-top:2px; }
@@ -53,7 +56,11 @@
   .toggle { display:inline-flex; border:1px solid var(--border); border-radius:6px; overflow:hidden; }
   .toggle button { background:transparent; border:none; color:var(--muted); padding:6px 12px; font-size:11px; cursor:pointer; }
   .toggle button.on { background:var(--gold); color:#07071a; font-weight:700; }
-  .chart-wrap { position:relative; height:230px; }
+  .chart-wrap { position:relative; height:230px; width:100%; max-width:100%; overflow:hidden; }
+  canvas { max-width:100% !important; }
+  table { display:block; overflow-x:auto; }
+  textarea { max-width:100%; box-sizing:border-box; }
+  .card, .kpi, .content, .header { max-width:100%; }
   .pos { color:var(--green); } .neg { color:var(--red); }
   table { width:100%; border-collapse:collapse; font-size:12px; }
   th { color:var(--muted); text-align:right; font-weight:500; padding:6px 4px; border-bottom:1px solid var(--border); }
@@ -252,8 +259,22 @@ async function repoPull(){
 }
 
 /* ============ TABS ============ */
-const TABS = ['Overview','Income','Expenses','Debt','Net Worth','Portfolio','Retirement','Simulation','Goals','Forecast','AI Strategy','Settings'];
+/* Six top-level groups; multi-view groups get a sub-tab bar. */
+const GROUPS = [
+  { name:'Overview',    views:['Overview'] },
+  { name:'Cash Flow',   views:['Income','Expenses','Debt'] },
+  { name:'Position',    views:['Net Worth','Portfolio'] },
+  { name:'Future',      views:['Retirement','Simulation','Forecast','Goals'] },
+  { name:'AI Strategy', views:['AI Strategy'] },
+  { name:'Settings',    views:['Settings'] }
+];
+const TABS = GROUPS.map(g=>g.name);
 let activeTab = 'Overview';
+let activeSub = {};   // group name -> selected view
+GROUPS.forEach(g=>{ activeSub[g.name] = g.views[0]; });
+function currentGroup(){ return GROUPS.find(g=>g.name===activeTab) || GROUPS[0]; }
+function currentView(){ return activeSub[activeTab] || currentGroup().views[0]; }
+function switchSub(v){ activeSub[activeTab] = v; renderContent(); }
 function renderTabs(){
   document.getElementById('tabs').innerHTML = TABS.map(t=>
     `<button class="tab ${t===activeTab?'active':''}" onclick="switchTab('${t}')">${t}</button>`).join('');
@@ -265,8 +286,13 @@ function destroyCharts(){ Object.values(charts).forEach(c=>c.destroy()); charts=
 function renderContent(){
   destroyCharts();
   const el = document.getElementById('content');
-  const fn = { 'Overview':vOverview,'Income':vIncome,'Expenses':vExpenses,'Debt':vDebt,'Net Worth':vNetWorth,'Portfolio':vPortfolio,'Retirement':vRetire,'Simulation':vSim,'Goals':vGoals,'Forecast':vForecast,'AI Strategy':vStrategy,'Settings':vSettings }[activeTab];
-  el.innerHTML = fn.html();
+  const VIEWS = { 'Overview':vOverview,'Income':vIncome,'Expenses':vExpenses,'Debt':vDebt,'Net Worth':vNetWorth,'Portfolio':vPortfolio,'Retirement':vRetire,'Simulation':vSim,'Goals':vGoals,'Forecast':vForecast,'AI Strategy':vStrategy,'Settings':vSettings };
+  const g = currentGroup();
+  const fn = VIEWS[currentView()] || vOverview;
+  const subBar = g.views.length > 1
+    ? `<div class="subtabs">${g.views.map(v=>`<button class="subtab ${v===currentView()?'active':''}" onclick="switchSub('${v}')">${v}</button>`).join('')}</div>`
+    : '';
+  el.innerHTML = subBar + fn.html();
   if (fn.after) fn.after();
   updateHeader();
 }
