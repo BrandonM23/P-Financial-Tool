@@ -19,6 +19,8 @@
   body { background:var(--bg); color:var(--text); font-family:'DM Sans',system-ui,sans-serif; min-height:100vh; position:relative; }
   .row { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:7px 0; border-bottom:1px solid var(--border); font-size:13px; flex-wrap:wrap; }
   .header { background:var(--surface); border-bottom:1px solid var(--border); padding:14px 14px 0; position:sticky; top:0; z-index:10; }
+  .sync-bar { display:flex; align-items:center; gap:8px; margin-top:10px; flex-wrap:wrap; }
+  .sync-hint { font-size:11px; color:var(--muted); }
   .tabs { display:flex; flex-wrap:wrap; gap:4px; margin-top:12px; padding-bottom:8px; }
   .tab { padding:7px 11px; border-radius:6px; border:1px solid var(--border); background:transparent; color:var(--muted); cursor:pointer; font-size:12px; font-weight:500; white-space:nowrap; }
   .tab.active { background:var(--gold); color:#07071a; font-weight:700; border-color:var(--gold); }
@@ -108,6 +110,11 @@
       <div class="savings-big" id="hdrSavings">–</div>
       <div class="savings-label">SAVINGS RATE (NET)</div>
     </div>
+  </div>
+  <div class="sync-bar" id="syncBar">
+    <button class="btn sm" onclick="repoPush()">⬆ Push</button>
+    <button class="btn ghost sm" onclick="repoPull()">⬇ Pull</button>
+    <span class="sync-hint" id="syncHint"></span>
   </div>
   <div class="tabs" id="tabs"></div>
 </div>
@@ -297,6 +304,8 @@ function renderContent(){
   updateHeader();
 }
 function updateHeader(){
+  const hint = document.getElementById('syncHint');
+  if (hint) hint.textContent = (syncCfg.token && syncCfg.repo) ? 'synced to '+syncCfg.repo : 'not configured — see Settings';
   const p = monthlyPicture(nowYM());
   const el = document.getElementById('hdrSavings');
   el.textContent = (p.savingsRate*100).toFixed(1) + '%';
