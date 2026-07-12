@@ -106,10 +106,6 @@
       <div class="header-title">BRANDON &amp; MINSU · FINANCIAL COMMAND</div>
       <div class="header-sub" id="hdrSub">Loading…</div>
     </div>
-    <div class="header-savings">
-      <div class="savings-big" id="hdrSavings">–</div>
-      <div class="savings-label">SAVINGS RATE (NET)</div>
-    </div>
   </div>
   <div class="sync-bar" id="syncBar">
     <button class="btn sm" onclick="repoPush()">⬆ Push</button>
@@ -307,9 +303,7 @@ function updateHeader(){
   const hint = document.getElementById('syncHint');
   if (hint) hint.textContent = (syncCfg.token && syncCfg.repo) ? 'synced to '+syncCfg.repo : 'not configured — see Settings';
   const p = monthlyPicture(nowYM());
-  const el = document.getElementById('hdrSavings');
-  el.textContent = (p.savingsRate*100).toFixed(1) + '%';
-  el.className = 'savings-big ' + (p.savingsRate>=0.2?'pos':p.savingsRate>=0?'':'neg');
+  /* savings rate now lives in the Overview KPI row */
 }
 
 /* ============ OVERVIEW ============ */
@@ -326,6 +320,7 @@ html(){
     </div>
   </div>
   <div class="kpi-row">
+    <div class="kpi"><div class="v ${p.savingsRate>=0.2?'pos':p.savingsRate>=0?'':'neg'}">${(p.savingsRate*100).toFixed(1)}%</div><div class="l">SAVINGS RATE (NET)</div></div>
     <div class="kpi"><div class="v">${fmt(isAnnual?t.gross:t.gross/12)}</div><div class="l">GROSS INCOME</div></div>
     <div class="kpi"><div class="v">${fmt(isAnnual?t.netAnnual:t.netMonthly)}</div><div class="l">NET (AFTER TAX + ROTH)</div></div>
     <div class="kpi"><div class="v">${fmt(p.outflow)}</div><div class="l">TOTAL OUTFLOWS</div></div>
@@ -475,12 +470,25 @@ html(){
   const assets = S.assets.reduce((a,x)=>a+Number(x.amt||0),0);
   const debt = S.debts.reduce((a,d)=>a+Number(d.balance||0),0);
   const nw = assets - debt;
+  const isHome = s => /home|house|proper/i.test(s);
+  const isMort = s => /mortgage|home loan/i.test(s);
+  const homeVal = S.assets.filter(x=>isHome(x.name)).reduce((a,x)=>a+Number(x.amt||0),0);
+  const mortBal = S.debts.filter(d=>isMort(d.name)).reduce((a,d)=>a+Number(d.balance||0),0);
+  const liquid = nw - (homeVal - mortBal);   // net worth excluding home equity
   return `
   <div class="kpi-row">
     <div class="kpi"><div class="v pos">${fmt(assets)}</div><div class="l">ASSETS</div></div>
     <div class="kpi"><div class="v neg">${fmt(debt)}</div><div class="l">LIABILITIES</div></div>
     <div class="kpi"><div class="v ${nw>=0?'pos':'neg'}">${fmt(nw)}</div><div class="l">NET WORTH</div></div>
+    <div class="kpi"><div class="v">${fmt(liquid)}</div><div class="l">INVESTABLE (EX-HOME)</div></div>
   </div>
+  ${homeVal>0?`<div class="card"><h3>Home Equity</h3>
+    <div class="row"><span class="nm">Home value</span><span class="pos">${fmt(homeVal)}</span></div>
+    <div class="row"><span class="nm">Mortgage balance owed</span><span class="neg">-${fmt(mortBal)}</span></div>
+    <div class="row"><span class="nm" style="color:var(--gold)">Your equity</span><span style="color:var(--gold)">${fmt(homeVal-mortBal)}</span></div>
+    <div class="bar-bg"><div class="bar-fill" style="width:${Math.max(0,Math.min(100,(homeVal-mortBal)/homeVal*100))}%"></div></div>
+    <p class="note" style="margin-top:6px">You own ${((homeVal-mortBal)/homeVal*100).toFixed(0)}% of the home. Equity is real net worth but not investable — it can't fund retirement without selling or borrowing against it.</p>
+  </div>`:''}
   <div class="card"><h3>Assets</h3>
   ${S.assets.map((x,i)=>`
     <div class="row">
