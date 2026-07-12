@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#07071a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brandon &amp; Minsu · Financial Command</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  :root {
+    --bg:#07071a; --surface:#0f0f23; --surface2:#1a1a2e; --border:#2d2d4e;
+    --text:#f1f5f9; --muted:#6b7280; --label:#9ca3af;
+    --gold:#e8c547; --green:#34d399; --red:#f87171; --purple:#a78bfa; --teal:#4ecdc4;
+  }
+  body { background:var(--bg); color:var(--text); font-family:'DM Sans',system-ui,sans-serif; min-height:100vh; overflow-x:hidden; }
+  .row { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:7px 0; border-bottom:1px solid var(--border); font-size:13px; flex-wrap:wrap; }
+  .header { background:var(--surface); border-bottom:1px solid var(--border); padding:14px 14px 0; position:sticky; top:0; z-index:10; }
+  .tabs { display:flex; flex-wrap:wrap; gap:4px; margin-top:12px; padding-bottom:8px; }
+  .tab { padding:7px 11px; border-radius:6px; border:1px solid var(--border); background:transparent; color:var(--muted); cursor:pointer; font-size:12px; font-weight:500; white-space:nowrap; }
+  .tab.active { background:var(--gold); color:#07071a; font-weight:700; border-color:var(--gold); }
+  .header-top { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap; }
+  .header-title { font-family:'Space Mono',monospace; font-size:clamp(13px,4vw,18px); color:var(--gold); font-weight:700; }
+  .header-sub { font-size:11px; color:var(--muted); margin-top:2px; }
+  .header-savings { text-align:right; }
+  .savings-big { font-family:'Space Mono',monospace; font-size:clamp(16px,4.5vw,22px); font-weight:700; }
+  .savings-label { font-size:10px; color:var(--muted); }
+  .content { padding:14px; display:flex; flex-direction:column; gap:14px; max-width:900px; margin:0 auto; width:100%; }
+  .tab-panel { display:none; flex-direction:column; gap:14px; }
+  .tab-panel.active { display:flex; }
+  .card { background:linear-gradient(135deg,var(--surface) 0%,var(--surface2) 100%); border:1px solid var(--border); border-radius:10px; padding:14px; }
+  .card h3 { font-family:'Space Mono',monospace; font-size:12px; color:var(--gold); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:10px; }
+  .kpi-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:10px; }
+  .kpi { background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:10px; }
+  .kpi .v { font-family:'Space Mono',monospace; font-size:clamp(14px,3.5vw,19px); font-weight:700; }
+  .kpi .l { font-size:10px; color:var(--muted); margin-top:2px; }
+  .row { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:7px 0; border-bottom:1px solid var(--border); font-size:13px; flex-wrap:wrap; }
+  .row:last-child { border-bottom:none; }
+  .row .nm { color:var(--label); flex:1 1 120px; min-width:0; }
+  input[type=number], input[type=text], input[type=month], select {
+    background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text);
+    padding:6px 8px; font-size:16px; font-family:'Space Mono',monospace; width:110px; max-width:100%; min-width:0; text-align:right;
+  }
+  input[type=text] { text-align:left; font-family:'DM Sans',sans-serif; }
+  input:focus, select:focus, button:focus-visible { outline:2px solid var(--gold); outline-offset:1px; }
+  .btn { background:var(--gold); color:#07071a; border:none; border-radius:6px; padding:8px 14px; font-weight:700; font-size:12px; cursor:pointer; }
+  .btn.ghost { background:transparent; color:var(--gold); border:1px solid var(--gold); }
+  .btn.sm { padding:5px 10px; font-size:11px; }
+  .btn.danger { background:transparent; color:var(--red); border:1px solid var(--red); }
+  .toggle { display:inline-flex; border:1px solid var(--border); border-radius:6px; overflow:hidden; }
+  .toggle button { background:transparent; border:none; color:var(--muted); padding:6px 12px; font-size:11px; cursor:pointer; }
+  .toggle button.on { background:var(--gold); color:#07071a; font-weight:700; }
+  .chart-wrap { position:relative; height:230px; }
+  .pos { color:var(--green); } .neg { color:var(--red); }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  th { color:var(--muted); text-align:right; font-weight:500; padding:6px 4px; border-bottom:1px solid var(--border); }
+  th:first-child, td:first-child { text-align:left; }
+  td { padding:6px 4px; text-align:right; border-bottom:1px solid var(--border); font-family:'Space Mono',monospace; }
+  .bar-bg { background:var(--bg); border-radius:6px; height:10px; overflow:hidden; margin-top:6px; }
+  .bar-fill { height:100%; background:linear-gradient(90deg,var(--teal),var(--green)); border-radius:6px; }
+  .note { font-size:11px; color:var(--muted); line-height:1.5; }
+  /* Strategy chat */
+  .chat-box { display:flex; flex-direction:column; gap:10px; max-height:420px; overflow-y:auto; padding:4px 2px; }
+  .msg { border-radius:10px; padding:10px 12px; font-size:13px; line-height:1.55; white-space:pre-wrap; max-width:92%; }
+  .msg.user { background:var(--surface2); border:1px solid var(--border); align-self:flex-end; }
+  .msg.ai { background:rgba(232,197,71,0.07); border:1px solid rgba(232,197,71,0.3); align-self:flex-start; }
+  .chat-input-row { display:flex; gap:8px; margin-top:10px; }
+  .chat-input-row input { flex:1; width:auto; text-align:left; font-family:'DM Sans',sans-serif; }
+  .quick { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+  .spin { display:inline-block; width:14px; height:14px; border:2px solid var(--gold); border-top-color:transparent; border-radius:50%; animation:sp 0.8s linear infinite; }
+  @keyframes sp { to { transform:rotate(360deg); } }
+  @media (prefers-reduced-motion:reduce){ .spin{animation:none;} }
+  @media (max-width:520px){
+    .header { position:static; }
+    .tab { padding:6px 9px; font-size:11px; }
+    .content { padding:10px; }
+    .card { padding:12px; }
+    .chart-wrap { height:200px; }
+    /* Inputs stop being fixed-width and share the row instead of pushing it wide */
+    input[type=number], input[type=month] { width:auto; flex:1 1 90px; min-width:80px; }
+    input[type=text], select { width:auto !important; flex:1 1 130px; min-width:110px; }
+    .row .nm { flex:1 1 100%; }         /* label takes its own line */
+    .row { padding:9px 0; }
+    table { font-size:11px; }
+    th, td { padding:5px 2px; }
+    .msg { max-width:100%; }
+  }
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="header-top">
+    <div>
+      <div class="header-title">BRANDON &amp; MINSU · FINANCIAL COMMAND</div>
+      <div class="header-sub" id="hdrSub">Loading…</div>
+    </div>
+    <div class="header-savings">
+      <div class="savings-big" id="hdrSavings">–</div>
+      <div class="savings-label">SAVINGS RATE (NET)</div>
+    </div>
+  </div>
+  <div class="tabs" id="tabs"></div>
+</div>
+<div class="content" id="content"></div>
+
+<script>
+'use strict';
+/* ============ STATE ============ */
+const DEFAULTS = {
+  view: 'monthly',
+  income: { brandonGross: 100000, brandonRoth401kPct: 10, minsuGross: 60000, minsuNonTaxPct: 0, minsuRoth401kPct: 6, salaryGrowthPct: 3 },
+  expenses: [ {name:'Housing costs', amt:1500}, {name:'Utilities', amt:300}, {name:'Food & dining', amt:800}, {name:'Transportation', amt:300}, {name:'Misc', amt:400} ],
+  debts: [ {name:'Mortgage', balance:250000, payment:1500, end:'2054-01'} ],
+  assets: [ {name:'Home value', amt:300000}, {name:'Retirement accounts', amt:100000}, {name:'Cash', amt:20000} ],
+  retire: { monthlySpend:6000, withdrawalPct:4, returnPct:7, inflationPct:2.5, currentAge:35, currentNestEgg:100000 },
+  goals: [ {name:'Emergency fund', target:30000, saved:10000, monthly:500} ],
+  portfolio: [ {kind:'stock', ticker:'VTI', qty:10, price:280} ],
+  sim: { years:25, meanPct:7, volPct:15, runs:1000, investPctOfSurplus:100 },
+  chat: []
+};
+let S = null;
+let charts = {};
+
+/* Storage tiers: Claude artifact storage → localStorage → memory-only. Sandboxed previews can block all persistent tiers. */
+let storageMode = 'memory';
+const store = {
+  async get(k){
+    if (window.storage) { try { const r = await window.storage.get(k); storageMode='claude'; return r ? r.value : null; } catch(e){} }
+    try { const v = localStorage.getItem(k); storageMode='local'; return v; } catch(e){}
+    storageMode='memory'; return null;
+  },
+  async set(k,v){
+    if (window.storage) { try { await window.storage.set(k,v); storageMode='claude'; return true; } catch(e){} }
+    try { localStorage.setItem(k,v); storageMode='local'; return true; } catch(e){}
+    storageMode='memory'; return false;
+  }
+};
+async function loadState(){
+  const v = await store.get('finapp-state');
+  if (v) { try { S = JSON.parse(v); if(!S.portfolio)S.portfolio=DEFAULTS.portfolio; if(!S.sim)S.sim={...DEFAULTS.sim}; return; } catch(e){} }
+  S = JSON.parse(JSON.stringify(DEFAULTS));
+}
+let saveTimer = null;
+function save(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async ()=>{
+    const ok = await store.set('finapp-state', JSON.stringify(S));
+    setSub(ok ? `Saved (${storageMode==='claude'?'Claude storage':'this device'}) · ` + new Date().toLocaleTimeString()
+              : '⚠ Sandbox blocks storage — use Overview → Backup to export before closing');
+  }, 600);
+}
+function setSub(t){ document.getElementById('hdrSub').textContent = t; }
+
+/* ============ TAX MODEL (2026, MFJ, NC) ============ */
+const FED_BRACKETS = [[0,0.10],[24800,0.12],[100800,0.22],[211400,0.24],[403550,0.32],[512450,0.35],[768700,0.37]];
+const FED_STD = 32200, NC_RATE = 0.0399, NC_STD = 25500;
+const SS_RATE = 0.062, SS_WAGE_BASE = 184500, MED_RATE = 0.0145, ADD_MED = 0.009, ADD_MED_THRESH = 250000;
+
+function progressiveTax(taxable, brackets){
+  if (taxable <= 0) return 0;
+  let tax = 0;
+  for (let i=0;i<brackets.length;i++){
+    const [lo, rate] = brackets[i];
+    const hi = i+1 < brackets.length ? brackets[i+1][0] : Infinity;
+    if (taxable > lo) tax += (Math.min(taxable, hi) - lo) * rate;
+  }
+  return tax;
+}
+function calcHousehold(inc){
+  const bG = inc.brandonGross, mG = inc.minsuGross;
+  const mNonTax = mG * inc.minsuNonTaxPct/100;
+  const incomeTaxableWages = bG + (mG - mNonTax); // tips excluded from income tax, still FICA
+  const fedTax = progressiveTax(incomeTaxableWages - FED_STD, FED_BRACKETS);
+  const ncTax = Math.max(0, incomeTaxableWages - NC_STD) * NC_RATE;
+  const fica = Math.min(bG, SS_WAGE_BASE)*SS_RATE + bG*MED_RATE
+             + Math.min(mG, SS_WAGE_BASE)*SS_RATE + mG*MED_RATE
+             + Math.max(0, bG+mG-ADD_MED_THRESH)*ADD_MED;
+  const roth = bG*inc.brandonRoth401kPct/100 + mG*inc.minsuRoth401kPct/100; // post-tax
+  const netAnnual = bG + mG - fedTax - ncTax - fica - roth;
+  return { gross:bG+mG, fedTax, ncTax, fica, roth, netAnnual, netMonthly:netAnnual/12, rothMonthly:roth/12 };
+}
+
+/* ============ CALC HELPERS ============ */
+const fmt = n => '$' + Math.round(n).toLocaleString();
+const fmtK = n => Math.abs(n)>=1e6 ? '$'+(n/1e6).toFixed(2)+'M' : '$'+Math.round(n/1000)+'k';
+function monthKey(d){ return d.toISOString().slice(0,7); }
+function activeDebtPayment(debt, ym){ return (!debt.end || ym <= debt.end) ? debt.payment : 0; }
+function nowYM(){ return monthKey(new Date()); }
+
+function monthlyPicture(ym){
+  const t = calcHousehold(S.income);
+  const exp = S.expenses.reduce((a,e)=>a+Number(e.amt||0),0);
+  const debtPay = S.debts.reduce((a,d)=>a+activeDebtPayment(d, ym),0);
+  const outflow = exp + debtPay;
+  const surplus = t.netMonthly - outflow;
+  return { tax:t, exp, debtPay, outflow, surplus, savingsRate: t.netMonthly>0 ? (surplus + t.rothMonthly)/(t.netMonthly + t.rothMonthly) : 0 };
+}
+function annualPicture(){
+  const now = new Date(); let exp=0, debt=0;
+  for (let m=0;m<12;m++){
+    const ym = monthKey(new Date(now.getFullYear(), m, 15));
+    exp += S.expenses.reduce((a,e)=>a+Number(e.amt||0),0);
+    debt += S.debts.reduce((a,d)=>a+activeDebtPayment(d, ym),0);
+  }
+  const t = calcHousehold(S.income);
+  return { tax:t, exp, debtPay:debt, outflow:exp+debt, surplus:t.netAnnual-(exp+debt) };
+}
+
+/* ============ CLOUD SYNC (private GitHub repo, Contents API) ============ */
+let syncCfg = { token:'', repo:'', path:'finances-data.json', autoPull:false };
+async function loadSync(){
+  const v = await store.get('finapp-sync');
+  if (v){ try{ const c = JSON.parse(v); syncCfg = { token:c.token||'', repo:c.repo||'', path:c.path||'finances-data.json', autoPull:!!c.autoPull }; }catch(e){} }
+}
+async function saveSyncCfg(){ await store.set('finapp-sync', JSON.stringify(syncCfg)); }
+function ghHeaders(){ return {'Authorization':'Bearer '+syncCfg.token, 'Accept':'application/vnd.github+json', 'Content-Type':'application/json'}; }
+function b64e(s){ return btoa(unescape(encodeURIComponent(s))); }
+function b64d(s){ return decodeURIComponent(escape(atob(s.replace(/\s/g,'')))); }
+function contentsUrl(){ return 'https://api.github.com/repos/'+syncCfg.repo+'/contents/'+syncCfg.path; }
+async function repoFetch(){ // → {sha, data} | {sha:null} if file absent | throws
+  const r = await fetch(contentsUrl(), {headers:ghHeaders()});
+  if (r.status === 404) return { sha:null };
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.message||('HTTP '+r.status));
+  return { sha:d.sha, data: JSON.parse(b64d(d.content)) };
+}
+async function repoPush(){
+  if (!syncCfg.token || !syncCfg.repo) return setSub('Sync: token + repo (owner/name) required');
+  try {
+    const cur = await repoFetch(); // need current sha to update
+    const body = { message:'sync '+new Date().toISOString(), content:b64e(JSON.stringify(S)) };
+    if (cur.sha) body.sha = cur.sha;
+    const r = await fetch(contentsUrl(), {method:'PUT', headers:ghHeaders(), body:JSON.stringify(body)});
+    const d = await r.json();
+    if (!r.ok) return setSub('Sync push failed: '+(d.message||r.status));
+    setSub('☁ Pushed · '+new Date().toLocaleTimeString());
+  } catch(e){ setSub('Sync push failed: '+e.message); }
+}
+async function repoPull(){
+  if (!syncCfg.token || !syncCfg.repo) return setSub('Sync: token + repo (owner/name) required');
+  try {
+    const cur = await repoFetch();
+    if (!cur.sha) return setSub('Sync: no data in repo yet — Push from the master device first');
+    S = cur.data;
+    if (!S.portfolio) S.portfolio = []; if (!S.sim) S.sim = {...DEFAULTS.sim};
+    save(); renderContent();
+    setSub('☁ Pulled · '+new Date().toLocaleTimeString());
+  } catch(e){ setSub('Sync pull failed: '+e.message); }
+}
+
+/* ============ TABS ============ */
+const TABS = ['Overview','Income','Expenses','Debt','Net Worth','Portfolio','Retirement','Simulation','Goals','Forecast','AI Strategy','Settings'];
+let activeTab = 'Overview';
+function renderTabs(){
+  document.getElementById('tabs').innerHTML = TABS.map(t=>
+    `<button class="tab ${t===activeTab?'active':''}" onclick="switchTab('${t}')">${t}</button>`).join('');
+}
+function switchTab(t){ activeTab = t; renderTabs(); renderContent(); }
+
+function destroyCharts(){ Object.values(charts).forEach(c=>c.destroy()); charts={}; }
+
+function renderContent(){
+  destroyCharts();
+  const el = document.getElementById('content');
+  const fn = { 'Overview':vOverview,'Income':vIncome,'Expenses':vExpenses,'Debt':vDebt,'Net Worth':vNetWorth,'Portfolio':vPortfolio,'Retirement':vRetire,'Simulation':vSim,'Goals':vGoals,'Forecast':vForecast,'AI Strategy':vStrategy,'Settings':vSettings }[activeTab];
+  el.innerHTML = fn.html();
+  if (fn.after) fn.after();
+  updateHeader();
+}
+function updateHeader(){
+  const p = monthlyPicture(nowYM());
+  const el = document.getElementById('hdrSavings');
+  el.textContent = (p.savingsRate*100).toFixed(1) + '%';
+  el.className = 'savings-big ' + (p.savingsRate>=0.2?'pos':p.savingsRate>=0?'':'neg');
+}
+
+/* ============ OVERVIEW ============ */
+const vOverview = {
+html(){
+  const isAnnual = S.view==='annual';
+  const p = isAnnual ? annualPicture() : monthlyPicture(nowYM());
+  const t = p.tax; const mult = isAnnual?12:1;
+  return `
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <div class="toggle">
+      <button class="${!isAnnual?'on':''}" onclick="S.view='monthly';save();renderContent()">Monthly</button>
+      <button class="${isAnnual?'on':''}" onclick="S.view='annual';save();renderContent()">Annual</button>
+    </div>
+  </div>
+  <div class="kpi-row">
+    <div class="kpi"><div class="v">${fmt(isAnnual?t.gross:t.gross/12)}</div><div class="l">GROSS INCOME</div></div>
+    <div class="kpi"><div class="v">${fmt(isAnnual?t.netAnnual:t.netMonthly)}</div><div class="l">NET (AFTER TAX + ROTH)</div></div>
+    <div class="kpi"><div class="v">${fmt(p.outflow)}</div><div class="l">TOTAL OUTFLOWS</div></div>
+    <div class="kpi"><div class="v ${p.surplus>=0?'pos':'neg'}">${fmt(p.surplus)}</div><div class="l">SURPLUS</div></div>
+  </div>
+  <div class="card"><h3>Cash Flow Waterfall</h3><div class="chart-wrap"><canvas id="cfChart"></canvas></div></div>
+  <div class="card"><h3>Tax Breakdown (annual)</h3>
+    <div class="row"><span class="nm">Federal income tax</span><span>${fmt(t.fedTax)}</span></div>
+    <div class="row"><span class="nm">NC state (3.99% flat)</span><span>${fmt(t.ncTax)}</span></div>
+    <div class="row"><span class="nm">FICA (SS + Medicare)</span><span>${fmt(t.fica)}</span></div>
+    <div class="row"><span class="nm">Roth 401k (post-tax)</span><span>${fmt(t.roth)}</span></div>
+    <div class="row"><span class="nm" style="color:var(--gold)">Effective total rate</span><span style="color:var(--gold)">${((t.fedTax+t.ncTax+t.fica)/t.gross*100).toFixed(1)}%</span></div>
+  </div>`;
+},
+after(){
+  const isAnnual = S.view==='annual';
+  const p = isAnnual ? annualPicture() : monthlyPicture(nowYM());
+  const t = p.tax;
+  const gross = isAnnual?t.gross:t.gross/12;
+  const taxes = isAnnual?(t.fedTax+t.ncTax+t.fica):(t.fedTax+t.ncTax+t.fica)/12;
+  const roth = isAnnual?t.roth:t.roth/12;
+  charts.cf = new Chart(document.getElementById('cfChart'), {
+    type:'bar',
+    data:{ labels:['Gross','Taxes','Roth 401k','Expenses','Debt pmts','Surplus'],
+      datasets:[{ data:[gross,-taxes,-roth,-p.exp,-p.debtPay,p.surplus],
+        backgroundColor:['#e8c547','#f87171','#a78bfa','#f87171','#f87171','#34d399'] }]},
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+      scales:{ x:{ticks:{color:'#9ca3af',font:{size:10}},grid:{color:'#2d2d4e'}}, y:{ticks:{color:'#9ca3af',callback:v=>fmtK(v)},grid:{color:'#2d2d4e'}} } }
+  });
+}};
+
+/* ============ INCOME ============ */
+const vIncome = {
+html(){
+  const i = S.income, t = calcHousehold(i);
+  const mNonTax = i.minsuGross * i.minsuNonTaxPct/100;
+  return `
+  <div class="card"><h3>Brandon</h3>
+    <div class="row"><span class="nm">Gross salary (annual)</span><input type="number" value="${i.brandonGross}" onchange="S.income.brandonGross=Number(this.value);save();renderContent()"></div>
+    <div class="row"><span class="nm">Roth 401k contribution %</span><input type="number" value="${i.brandonRoth401kPct}" step="0.5" onchange="S.income.brandonRoth401kPct=Number(this.value);save();renderContent()"></div>
+    <div class="note">Roth = post-tax. Contributing ${fmt(i.brandonGross*i.brandonRoth401kPct/100)}/yr.</div>
+  </div>
+  <div class="card"><h3>Minsu</h3>
+    <div class="row"><span class="nm">Gross salary (annual)</span><input type="number" value="${i.minsuGross}" onchange="S.income.minsuGross=Number(this.value);save();renderContent()"></div>
+    <div class="row"><span class="nm">Tips / non-taxable %</span><input type="number" value="${i.minsuNonTaxPct}" step="1" onchange="S.income.minsuNonTaxPct=Number(this.value);save();renderContent()"></div>
+    <div class="row"><span class="nm">Roth 401k contribution %</span><input type="number" value="${i.minsuRoth401kPct}" step="0.5" onchange="S.income.minsuRoth401kPct=Number(this.value);save();renderContent()"></div>
+    <div class="note">${fmt(mNonTax)}/yr excluded from income tax (still subject to FICA).</div>
+  </div>
+  <div class="card"><h3>Assumptions</h3>
+    <div class="row"><span class="nm">Salary growth %/yr</span><input type="number" value="${i.salaryGrowthPct}" step="0.5" onchange="S.income.salaryGrowthPct=Number(this.value);save();renderContent()"></div>
+  </div>
+  <div class="kpi-row">
+    <div class="kpi"><div class="v">${fmt(t.gross)}</div><div class="l">HOUSEHOLD GROSS</div></div>
+    <div class="kpi"><div class="v">${fmt(t.netAnnual)}</div><div class="l">NET AFTER TAX + ROTH</div></div>
+    <div class="kpi"><div class="v">${fmt(t.netMonthly)}</div><div class="l">NET PER MONTH</div></div>
+    <div class="kpi"><div class="v">${((t.fedTax+t.ncTax+t.fica)/t.gross*100).toFixed(1)}%</div><div class="l">EFFECTIVE TAX RATE</div></div>
+  </div>`;
+}};
+
+/* ============ SETTINGS (sync + backup) ============ */
+const vSettings = {
+html(){
+  return `
+  <div class="card"><h3>Cloud Sync (live shared data)</h3>
+    <p class="note" style="margin-bottom:8px">Both phones point at one file in a private GitHub repo — reads and writes require the token. Brandon: Push after edits. Minsu: Pull (or enable pull-on-open). Token stores on this device only — never in exports or the repo.</p>
+    <div class="row"><span class="nm">GitHub token ${syncCfg.token?'<span class="pos">✓ set</span>':''}</span>
+      <input type="text" id="syncTok" placeholder="github_pat_…" value="${syncCfg.token?'••••••••':''}" onfocus="if(this.value==='••••••••')this.value=''">
+    </div>
+    <div class="row"><span class="nm">Private repo (owner/name)</span>
+      <input type="text" id="syncRepo" placeholder="BrandonM23/P-Financial-Data" value="${syncCfg.repo||''}">
+    </div>
+    <div class="row"><span class="nm">Pull latest on open</span>
+      <input type="checkbox" style="width:auto" ${syncCfg.autoPull?'checked':''} onchange="syncCfg.autoPull=this.checked;saveSyncCfg()">
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <button class="btn sm" onclick="(async()=>{const t=document.getElementById('syncTok').value;if(t&&t!=='••••••••')syncCfg.token=t.trim();syncCfg.repo=document.getElementById('syncRepo').value.trim();await saveSyncCfg();setSub('Sync config saved');renderContent()})()">Save config</button>
+      <button class="btn ghost sm" onclick="repoPush()">⬆ Push</button>
+      <button class="btn ghost sm" onclick="repoPull()">⬇ Pull</button>
+    </div>
+  </div>
+  <div class="card"><h3>AI Strategy Key</h3>
+    <div class="row"><span class="nm">Anthropic API key ${apiKey?'<span class="pos">✓ set</span>':'<span class="neg">not set</span>'}</span>
+      <input type="text" id="keyInput2" placeholder="sk-ant-…" value="${apiKey?'••••••••':''}" onfocus="if(this.value==='••••••••')this.value=''">
+      <button class="btn sm" onclick="saveKey(document.getElementById('keyInput2').value)">Save</button>
+    </div>
+    <p class="note">Stored on this device only. Get one at console.anthropic.com → Keys.</p>
+  </div>
+  <div class="card"><h3>Backup &amp; Transfer (manual)</h3>
+    <p class="note" style="margin-bottom:8px">Fallback when sync isn't set up. Export the data blob, paste it into another device to load it.</p>
+    <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+      <button class="btn ghost sm" onclick="document.getElementById('bkArea').value=JSON.stringify(S);document.getElementById('bkArea').select()">Export → select all → copy</button>
+      <button class="btn sm" onclick="try{S=JSON.parse(document.getElementById('bkArea').value);if(!S.portfolio)S.portfolio=[];if(!S.sim)S.sim={...DEFAULTS.sim};save();renderContent();setSub('Imported')}catch(e){setSub('Import failed: not valid data')}">Import pasted data</button>
+    </div>
+    <textarea id="bkArea" placeholder="Exported data appears here / paste data to import" style="width:100%;height:80px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:10px;padding:6px;font-family:'Space Mono',monospace"></textarea>
+  </div>
+  <div class="card"><h3>Reset</h3>
+    <button class="btn danger sm" onclick="if(confirm('Wipe local data and reload defaults? Your synced repo copy is NOT affected.')){S=JSON.parse(JSON.stringify(DEFAULTS));save();renderContent()}">Reset to defaults</button>
+  </div>`;
+}};
+
+/* ============ EXPENSES ============ */
+const vExpenses = {
+html(){
+  const total = S.expenses.reduce((a,e)=>a+Number(e.amt||0),0);
+  return `<div class="card"><h3>Monthly Expenses · ${fmt(total)}/mo · ${fmt(total*12)}/yr</h3>
+  ${S.expenses.map((e,i)=>`
+    <div class="row">
+      <input type="text" value="${e.name.replace(/"/g,'&quot;')}" style="width:48%" onchange="S.expenses[${i}].name=this.value;save()">
+      <input type="number" value="${e.amt}" onchange="S.expenses[${i}].amt=Number(this.value);save();renderContent()">
+      <button class="btn danger sm" onclick="S.expenses.splice(${i},1);save();renderContent()">✕</button>
+    </div>`).join('')}
+  <div style="margin-top:10px"><button class="btn ghost sm" onclick="S.expenses.push({name:'New item',amt:0});save();renderContent()">+ Add line item</button></div>
+  <p class="note" style="margin-top:8px">Food & dining is benchmark-driven (~12% of net for your income band). Adjust if actuals diverge.</p>
+  </div>`;
+}};
+
+/* ============ DEBT ============ */
+const vDebt = {
+html(){
+  const ym = nowYM();
+  const totBal = S.debts.reduce((a,d)=>a+Number(d.balance||0),0);
+  const totPay = S.debts.reduce((a,d)=>a+activeDebtPayment(d,ym),0);
+  return `
+  <div class="kpi-row">
+    <div class="kpi"><div class="v neg">${fmt(totBal)}</div><div class="l">TOTAL DEBT</div></div>
+    <div class="kpi"><div class="v">${fmt(totPay)}</div><div class="l">ACTIVE MONTHLY PAYMENTS</div></div>
+  </div>
+  <div class="card"><h3>Debt Line Items</h3>
+  ${S.debts.map((d,i)=>`
+    <div style="border-bottom:1px solid var(--border);padding:10px 0">
+      <div class="row" style="border:none;padding:3px 0">
+        <input type="text" value="${d.name.replace(/"/g,'&quot;')}" style="width:45%" onchange="S.debts[${i}].name=this.value;save()">
+        <button class="btn danger sm" onclick="S.debts.splice(${i},1);save();renderContent()">✕</button>
+      </div>
+      <div class="row" style="border:none;padding:3px 0"><span class="nm">Balance</span><input type="number" value="${d.balance}" onchange="S.debts[${i}].balance=Number(this.value);save();renderContent()"></div>
+      <div class="row" style="border:none;padding:3px 0"><span class="nm">Monthly payment</span><input type="number" value="${d.payment}" onchange="S.debts[${i}].payment=Number(this.value);save();renderContent()"></div>
+      <div class="row" style="border:none;padding:3px 0"><span class="nm">End date ${d.end && d.end < ym ? '<span class="pos">(ended — excluded)</span>':''}</span><input type="month" value="${d.end||''}" onchange="S.debts[${i}].end=this.value;save();renderContent()"></div>
+    </div>`).join('')}
+  <div style="margin-top:10px"><button class="btn ghost sm" onclick="S.debts.push({name:'New debt',balance:0,payment:0,end:''});save();renderContent()">+ Add debt</button></div>
+  <p class="note" style="margin-top:8px">Payments roll into total outflows automatically and drop off after their end date (car loan disappears October 2026).</p>
+  </div>`;
+}};
+
+/* ============ NET WORTH ============ */
+const vNetWorth = {
+html(){
+  const assets = S.assets.reduce((a,x)=>a+Number(x.amt||0),0);
+  const debt = S.debts.reduce((a,d)=>a+Number(d.balance||0),0);
+  const nw = assets - debt;
+  return `
+  <div class="kpi-row">
+    <div class="kpi"><div class="v pos">${fmt(assets)}</div><div class="l">ASSETS</div></div>
+    <div class="kpi"><div class="v neg">${fmt(debt)}</div><div class="l">LIABILITIES</div></div>
+    <div class="kpi"><div class="v ${nw>=0?'pos':'neg'}">${fmt(nw)}</div><div class="l">NET WORTH</div></div>
+  </div>
+  <div class="card"><h3>Assets</h3>
+  ${S.assets.map((x,i)=>`
+    <div class="row">
+      <input type="text" value="${x.name.replace(/"/g,'&quot;')}" style="width:48%" onchange="S.assets[${i}].name=this.value;save()">
+      <input type="number" value="${x.amt}" onchange="S.assets[${i}].amt=Number(this.value);save();renderContent()">
+      <button class="btn danger sm" onclick="S.assets.splice(${i},1);save();renderContent()">✕</button>
+    </div>`).join('')}
+  <div style="margin-top:10px"><button class="btn ghost sm" onclick="S.assets.push({name:'New asset',amt:0});save();renderContent()">+ Add asset</button></div>
+  </div>
+  <div class="card"><h3>Liabilities (from Debt tab)</h3>
+  ${S.debts.map(d=>`<div class="row"><span class="nm">${d.name}</span><span class="neg">${fmt(d.balance)}</span></div>`).join('')}
+  </div>`;
+}};
+
+/* ============ RETIREMENT ============ */
+function retireCalc(monthlyContrib, retn){
+  const r = S.retire;
+  const target = (r.monthlySpend*12) / (r.withdrawalPct/100);
+  const mRate = retn/100/12;
+  let bal = r.currentNestEgg, months = 0;
+  while (bal < target && months < 12*60){ bal = bal*(1+mRate) + monthlyContrib; months++; }
+  return { target, months, years: months/12, ageAt: r.currentAge + months/12 };
+}
+const vRetire = {
+html(){
+  const r = S.retire;
+  const p = monthlyPicture(nowYM());
+  const t = p.tax;
+  const contrib = Math.max(0, p.surplus) + t.rothMonthly;
+  const rc = retireCalc(contrib, r.returnPct);
+  return `
+  <div class="card"><h3>Inputs</h3>
+    <div class="row"><span class="nm">Desired retirement spend /mo (today's $)</span><input type="number" value="${r.monthlySpend}" onchange="S.retire.monthlySpend=Number(this.value);save();renderContent()"></div>
+    <div class="row"><span class="nm">Withdrawal rate %</span><input type="number" value="${r.withdrawalPct}" step="0.1" onchange="S.retire.withdrawalPct=Number(this.value);save();renderContent()"></div>
+    <div class="row"><span class="nm">Expected return %</span><input type="number" value="${r.returnPct}" step="0.5" onchange="S.retire.returnPct=Number(this.value);save();renderContent()"></div>
+    <div class="row"><span class="nm">Current age</span><input type="number" value="${r.currentAge}" onchange="S.retire.currentAge=Number(this.value);save();renderContent()"></div>
+    <div class="row"><span class="nm">Current nest egg</span><input type="number" value="${r.currentNestEgg}" onchange="S.retire.currentNestEgg=Number(this.value);save();renderContent()"></div>
+  </div>
+  <div class="kpi-row">
+    <div class="kpi"><div class="v">${fmtK(rc.target)}</div><div class="l">NEST EGG NEEDED (${r.withdrawalPct}% RULE)</div></div>
+    <div class="kpi"><div class="v">${fmt(contrib)}</div><div class="l">ASSUMED MONTHLY CONTRIBUTION*</div></div>
+    <div class="kpi"><div class="v ${rc.years<60?'pos':'neg'}">${rc.years<60?rc.years.toFixed(1)+' yrs':'>60 yrs'}</div><div class="l">TIME TO TARGET (AGE ${rc.years<60?Math.round(rc.ageAt):'—'})</div></div>
+  </div>
+  <div class="card"><h3>Portfolio Projection</h3><div class="chart-wrap"><canvas id="retChart"></canvas></div>
+  <p class="note" style="margin-top:8px">*Assumes 100% of surplus + Roth contributions are invested every month. If surplus sits in checking, you are materially behind this curve.</p></div>
+  <div class="card"><h3>Sensitivity: Years to Target</h3><table><thead><tr><th>Invested /mo</th><th>5% ret</th><th>7% ret</th><th>9% ret</th></tr></thead><tbody>
+  ${[0.5,0.75,1.0].map(f=>{
+    const c = contrib*f;
+    return `<tr><td>${fmt(c)} (${Math.round(f*100)}%)</td>${[5,7,9].map(rr=>{
+      const x = retireCalc(c, rr); return `<td>${x.years<60?x.years.toFixed(1):'—'}</td>`;
+    }).join('')}</tr>`;
+  }).join('')}
+  </tbody></table></div>`;
+},
+after(){
+  const r = S.retire, p = monthlyPicture(nowYM());
+  const contrib = Math.max(0,p.surplus) + p.tax.rothMonthly;
+  const mRate = r.returnPct/100/12;
+  const target = (r.monthlySpend*12)/(r.withdrawalPct/100);
+  const yrs = 30, data=[], labels=[];
+  let bal = r.currentNestEgg;
+  for (let y=0;y<=yrs;y++){ labels.push('Age '+(r.currentAge+y)); data.push(bal);
+    for (let m=0;m<12;m++) bal = bal*(1+mRate)+contrib; }
+  charts.ret = new Chart(document.getElementById('retChart'),{
+    type:'line',
+    data:{ labels, datasets:[
+      {label:'Portfolio', data, borderColor:'#4ecdc4', backgroundColor:'rgba(78,205,196,0.12)', fill:true, tension:0.3, pointRadius:0},
+      {label:'Target', data:labels.map(()=>target), borderColor:'#e8c547', borderDash:[6,4], pointRadius:0, fill:false}
+    ]},
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{labels:{color:'#9ca3af',font:{size:10}}}},
+      scales:{ x:{ticks:{color:'#9ca3af',maxTicksLimit:8,font:{size:10}},grid:{color:'#2d2d4e'}}, y:{ticks:{color:'#9ca3af',callback:v=>fmtK(v)},grid:{color:'#2d2d4e'}} } }
+  });
+}};
+
+/* ============ PORTFOLIO ============ */
+function holdingValue(h){
+  const mult = h.kind==='option' ? 100 : 1;
+  const sign = (h.kind==='option' && h.side==='short') ? -1 : 1;
+  return sign * Number(h.qty||0) * Number(h.price||0) * mult;
+}
+function portfolioTotal(){ return S.portfolio.reduce((a,h)=>a+holdingValue(h),0); }
+const vPortfolio = {
+html(){
+  const tot = portfolioTotal();
+  return `
+  <div class="kpi-row">
+    <div class="kpi"><div class="v ${tot>=0?'pos':'neg'}">${fmt(tot)}</div><div class="l">PORTFOLIO MARKET VALUE</div></div>
+    <div class="kpi"><div class="v">${S.portfolio.length}</div><div class="l">POSITIONS</div></div>
+  </div>
+  <div class="card"><h3>Holdings</h3>
+  ${S.portfolio.map((h,i)=>`
+    <div style="border-bottom:1px solid var(--border);padding:10px 0">
+      <div class="row" style="border:none;padding:3px 0">
+        <select onchange="S.portfolio[${i}].kind=this.value;save();renderContent()" style="width:30%">
+          <option value="stock" ${h.kind==='stock'?'selected':''}>Stock/ETF</option>
+          <option value="option" ${h.kind==='option'?'selected':''}>Option</option>
+        </select>
+        <input type="text" value="${(h.ticker||'').replace(/"/g,'&quot;')}" placeholder="Ticker" style="width:28%;text-transform:uppercase" onchange="S.portfolio[${i}].ticker=this.value.toUpperCase();save()">
+        <button class="btn danger sm" onclick="S.portfolio.splice(${i},1);save();renderContent()">✕</button>
+      </div>
+      ${h.kind==='option'?`
+      <div class="row" style="border:none;padding:3px 0">
+        <select onchange="S.portfolio[${i}].optType=this.value;save()" style="width:30%">
+          <option value="call" ${h.optType==='call'?'selected':''}>Call</option>
+          <option value="put" ${h.optType==='put'?'selected':''}>Put</option>
+        </select>
+        <select onchange="S.portfolio[${i}].side=this.value;save();renderContent()" style="width:30%">
+          <option value="long" ${h.side==='long'?'selected':''}>Long</option>
+          <option value="short" ${h.side==='short'?'selected':''}>Short</option>
+        </select>
+      </div>
+      <div class="row" style="border:none;padding:3px 0"><span class="nm">Strike / Expiry</span>
+        <input type="number" value="${h.strike||''}" placeholder="Strike" style="width:80px" onchange="S.portfolio[${i}].strike=Number(this.value);save()">
+        <input type="month" value="${h.expiry||''}" style="width:120px" onchange="S.portfolio[${i}].expiry=this.value;save()">
+      </div>
+      <div class="row" style="border:none;padding:3px 0"><span class="nm">Contracts / Premium per share</span>
+        <input type="number" value="${h.qty}" style="width:70px" onchange="S.portfolio[${i}].qty=Number(this.value);save();renderContent()">
+        <input type="number" value="${h.price}" step="0.01" style="width:90px" onchange="S.portfolio[${i}].price=Number(this.value);save();renderContent()">
+      </div>`:`
+      <div class="row" style="border:none;padding:3px 0"><span class="nm">Shares / Current price</span>
+        <input type="number" value="${h.qty}" style="width:80px" onchange="S.portfolio[${i}].qty=Number(this.value);save();renderContent()">
+        <input type="number" value="${h.price}" step="0.01" style="width:100px" onchange="S.portfolio[${i}].price=Number(this.value);save();renderContent()">
+      </div>`}
+      <div class="note">Value: <span class="${holdingValue(h)>=0?'pos':'neg'}">${fmt(holdingValue(h))}</span>${h.kind==='option'?' (× 100/contract'+(h.side==='short'?', short = liability':'')+')':''}</div>
+    </div>`).join('')}
+  <div style="margin-top:10px">
+    <button class="btn ghost sm" onclick="S.portfolio.push({kind:'stock',ticker:'',qty:0,price:0});save();renderContent()">+ Stock/ETF</button>
+    <button class="btn ghost sm" onclick="S.portfolio.push({kind:'option',ticker:'',optType:'call',side:'long',strike:0,expiry:'',qty:1,price:0});save();renderContent()">+ Option</button>
+  </div>
+  <p class="note" style="margin-top:8px">Prices are manual — update before asking the AI to rate the strategy, or ask it to pull current prices (it can search live data). Ask "Rate my portfolio strategy" in the AI tab for a scored assessment.</p>
+  </div>`;
+}};
+
+/* ============ SIMULATION (Monte Carlo) ============ */
+function randn(){ let u=0,v=0; while(u===0)u=Math.random(); while(v===0)v=Math.random(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+function runMonteCarlo(){
+  const c = S.sim, r = S.retire;
+  const p = monthlyPicture(nowYM());
+  const contrib = (Math.max(0,p.surplus)*c.investPctOfSurplus/100) + p.tax.rothMonthly;
+  const start = r.currentNestEgg + portfolioTotal();
+  const target = (r.monthlySpend*12)/(r.withdrawalPct/100);
+  const muM = c.meanPct/100/12, sigM = c.volPct/100/Math.sqrt(12);
+  const years = c.years, runs = Math.min(5000, Math.max(100, c.runs));
+  const yearly = Array.from({length:years+1},()=>[]);
+  let hit = 0;
+  for (let k=0;k<runs;k++){
+    let bal = start; yearly[0].push(bal); let reached=false;
+    for (let y=1;y<=years;y++){
+      for (let m=0;m<12;m++){ bal = bal*(1+muM+sigM*randn()) + contrib; }
+      yearly[y].push(bal); if (bal>=target) reached=true;
+    }
+    if (reached) hit++;
+  }
+  const pct = (arr,q)=>{ const s=[...arr].sort((a,b)=>a-b); return s[Math.floor(q*(s.length-1))]; };
+  return { target, contrib, start, successPct: hit/runs*100,
+    p10: yearly.map(a=>pct(a,0.10)), p50: yearly.map(a=>pct(a,0.50)), p90: yearly.map(a=>pct(a,0.90)),
+    endMedian: pct(yearly[years],0.5) };
+}
+let lastSim = null;
+const vSim = {
+html(){
+  const c = S.sim;
+  return `
+  <div class="card"><h3>Monte Carlo Inputs</h3>
+    <div class="row"><span class="nm">Horizon (years)</span><input type="number" value="${c.years}" onchange="S.sim.years=Number(this.value);save()"></div>
+    <div class="row"><span class="nm">Mean annual return %</span><input type="number" value="${c.meanPct}" step="0.5" onchange="S.sim.meanPct=Number(this.value);save()"></div>
+    <div class="row"><span class="nm">Volatility (annual σ) %</span><input type="number" value="${c.volPct}" step="1" onchange="S.sim.volPct=Number(this.value);save()"></div>
+    <div class="row"><span class="nm">% of surplus invested</span><input type="number" value="${c.investPctOfSurplus}" onchange="S.sim.investPctOfSurplus=Number(this.value);save()"></div>
+    <div class="row"><span class="nm">Simulation runs</span><input type="number" value="${c.runs}" onchange="S.sim.runs=Number(this.value);save()"></div>
+    <div style="margin-top:10px"><button class="btn" onclick="lastSim=runMonteCarlo();renderContent()">Run simulation</button></div>
+    <p class="note" style="margin-top:8px">Starting balance = nest egg + portfolio value. Options positions are counted at market value only — their nonlinear payoff is NOT simulated; the AI rating covers that risk instead. 100% equity ≈ 15-18% σ; 60/40 ≈ 10%.</p>
+  </div>
+  ${lastSim?`
+  <div class="kpi-row">
+    <div class="kpi"><div class="v ${lastSim.successPct>=75?'pos':lastSim.successPct>=50?'':'neg'}">${lastSim.successPct.toFixed(0)}%</div><div class="l">PATHS HITTING ${fmtK(lastSim.target)} TARGET</div></div>
+    <div class="kpi"><div class="v">${fmtK(lastSim.endMedian)}</div><div class="l">MEDIAN AT YEAR ${S.sim.years}</div></div>
+    <div class="kpi"><div class="v">${fmt(lastSim.contrib)}</div><div class="l">MONTHLY CONTRIBUTION USED</div></div>
+  </div>
+  <div class="card"><h3>Outcome Fan (10th / 50th / 90th percentile)</h3><div class="chart-wrap"><canvas id="simChart"></canvas></div></div>`:''}`;
+},
+after(){
+  if (!lastSim) return;
+  const labels = lastSim.p50.map((_,y)=>'Yr '+y);
+  charts.sim = new Chart(document.getElementById('simChart'),{
+    type:'line',
+    data:{ labels, datasets:[
+      {label:'90th', data:lastSim.p90, borderColor:'#34d399', pointRadius:0, tension:0.3, fill:'+1', backgroundColor:'rgba(78,205,196,0.10)'},
+      {label:'Median', data:lastSim.p50, borderColor:'#e8c547', pointRadius:0, tension:0.3, borderWidth:2},
+      {label:'10th', data:lastSim.p10, borderColor:'#f87171', pointRadius:0, tension:0.3},
+      {label:'Target', data:labels.map(()=>lastSim.target), borderColor:'#a78bfa', borderDash:[6,4], pointRadius:0}
+    ]},
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{labels:{color:'#9ca3af',font:{size:10}}}},
+      scales:{ x:{ticks:{color:'#9ca3af',maxTicksLimit:8,font:{size:10}},grid:{color:'#2d2d4e'}}, y:{ticks:{color:'#9ca3af',callback:v=>fmtK(v)},grid:{color:'#2d2d4e'}} } }
+  });
+}};
+
+/* ============ GOALS ============ */
+const vGoals = {
+html(){
+  return `<div class="card"><h3>Savings Goals</h3>
+  ${S.goals.map((g,i)=>{
+    const pct = Math.min(100, g.saved/g.target*100);
+    const rem = Math.max(0, g.target-g.saved);
+    const eta = g.monthly>0 ? Math.ceil(rem/g.monthly) : null;
+    return `<div style="border-bottom:1px solid var(--border);padding:10px 0">
+      <div class="row" style="border:none;padding:3px 0">
+        <input type="text" value="${g.name.replace(/"/g,'&quot;')}" style="width:45%" onchange="S.goals[${i}].name=this.value;save()">
+        <button class="btn danger sm" onclick="S.goals.splice(${i},1);save();renderContent()">✕</button>
+      </div>
+      <div class="row" style="border:none;padding:3px 0"><span class="nm">Target</span><input type="number" value="${g.target}" onchange="S.goals[${i}].target=Number(this.value);save();renderContent()"></div>
+      <div class="row" style="border:none;padding:3px 0"><span class="nm">Saved so far</span><input type="number" value="${g.saved}" onchange="S.goals[${i}].saved=Number(this.value);save();renderContent()"></div>
+      <div class="row" style="border:none;padding:3px 0"><span class="nm">Monthly contribution</span><input type="number" value="${g.monthly}" onchange="S.goals[${i}].monthly=Number(this.value);save();renderContent()"></div>
+      <div class="bar-bg"><div class="bar-fill" style="width:${pct}%"></div></div>
+      <div class="note" style="margin-top:4px">${pct.toFixed(0)}% funded${eta?` · complete in ~${eta} mo (${new Date(Date.now()+eta*2.63e9).toLocaleDateString('en-US',{month:'short',year:'numeric'})})`:''}</div>
+    </div>`;
+  }).join('')}
+  <div style="margin-top:10px"><button class="btn ghost sm" onclick="S.goals.push({name:'New goal',target:1000,saved:0,monthly:100});save();renderContent()">+ Add goal</button></div>
+  </div>`;
+}};
+
+/* ============ FORECAST ============ */
+const vForecast = {
+html(){
+  return `
+  <div class="card"><h3>Assumptions</h3>
+    <div class="row"><span class="nm">Salary growth %/yr</span><input type="number" value="${S.income.salaryGrowthPct}" step="0.5" onchange="S.income.salaryGrowthPct=Number(this.value);save();renderContent()"></div>
+    <div class="row"><span class="nm">Expense inflation %/yr</span><input type="number" value="${S.retire.inflationPct}" step="0.5" onchange="S.retire.inflationPct=Number(this.value);save();renderContent()"></div>
+  </div>
+  <div class="card"><h3>10-Year Income vs Outflows</h3><div class="chart-wrap"><canvas id="fcChart"></canvas></div>
+  <p class="note" style="margin-top:8px">Debt payments drop off at their end dates. Daycare is NOT auto-removed — edit expenses when it ends; that alone is a five-figure annual swing.</p></div>`;
+},
+after(){
+  const now = new Date(); const labels=[], incData=[], outData=[], surData=[];
+  for (let y=0;y<10;y++){
+    const yr = now.getFullYear()+y;
+    const g = Math.pow(1+S.income.salaryGrowthPct/100, y);
+    const infl = Math.pow(1+S.retire.inflationPct/100, y);
+    const inc = calcHousehold({...S.income, brandonGross:S.income.brandonGross*g, minsuGross:S.income.minsuGross*g});
+    let out = S.expenses.reduce((a,e)=>a+Number(e.amt||0),0)*12*infl;
+    for (let m=0;m<12;m++){
+      const ym = `${yr}-${String(m+1).padStart(2,'0')}`;
+      out += S.debts.reduce((a,d)=>a+activeDebtPayment(d,ym),0);
+    }
+    labels.push(yr); incData.push(inc.netAnnual); outData.push(out); surData.push(inc.netAnnual-out);
+  }
+  charts.fc = new Chart(document.getElementById('fcChart'),{
+    type:'bar',
+    data:{ labels, datasets:[
+      {type:'line',label:'Net income',data:incData,borderColor:'#e8c547',pointRadius:2,tension:0.3},
+      {type:'line',label:'Outflows',data:outData,borderColor:'#f87171',pointRadius:2,tension:0.3},
+      {type:'bar',label:'Surplus',data:surData,backgroundColor:'rgba(52,211,153,0.5)'}
+    ]},
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{labels:{color:'#9ca3af',font:{size:10}}}},
+      scales:{ x:{ticks:{color:'#9ca3af',font:{size:10}},grid:{color:'#2d2d4e'}}, y:{ticks:{color:'#9ca3af',callback:v=>fmtK(v)},grid:{color:'#2d2d4e'}} } }
+  });
+}};
+
+/* ============ AI STRATEGY ============ */
+function buildSnapshot(){
+  const p = monthlyPicture(nowYM());
+  const a = annualPicture();
+  const assets = S.assets.reduce((x,y)=>x+Number(y.amt||0),0);
+  const debt = S.debts.reduce((x,y)=>x+Number(y.balance||0),0);
+  return {
+    date: new Date().toISOString().slice(0,10),
+    household: 'Brandon & Minsu, MFJ, North Carolina',
+    income: { brandonGross:S.income.brandonGross, minsuGross:S.income.minsuGross, minsuNonTaxablePct:S.income.minsuNonTaxPct,
+      roth401k:{brandonPct:S.income.brandonRoth401kPct, minsuPct:S.income.minsuRoth401kPct, type:'post-tax Roth'},
+      netMonthly: Math.round(p.tax.netMonthly) },
+    monthly: { expenses:Math.round(p.exp), debtPayments:Math.round(p.debtPay), surplus:Math.round(p.surplus), savingsRatePct:(p.savingsRate*100).toFixed(1) },
+    annualSurplus: Math.round(a.surplus),
+    debts: S.debts.map(d=>({name:d.name, balance:d.balance, payment:d.payment, endDate:d.end||'ongoing'})),
+    assets: S.assets, netWorth: assets-debt,
+    retirement: { ...S.retire, targetNestEgg: Math.round((S.retire.monthlySpend*12)/(S.retire.withdrawalPct/100)) },
+    goals: S.goals,
+    portfolio: { totalValue: Math.round(portfolioTotal()), holdings: S.portfolio },
+    lastSimulation: lastSim ? { successPct:+lastSim.successPct.toFixed(0), medianEnd:Math.round(lastSim.endMedian), target:Math.round(lastSim.target), assumptions:S.sim } : 'not run',
+    notes: 'Student loans ~5.6% APR. Car loan ends Sept 2026. Daycare will eventually end (not modeled).'
+  };
+}
+let aiBusy = false, apiKey = '';
+async function saveKey(v){ apiKey = v.trim(); await store.set('finapp-apikey', apiKey); renderContent(); }
+async function askAI(prompt){
+  if (aiBusy || !prompt.trim()) return;
+  aiBusy = true;
+  S.chat.push({role:'user', content:prompt});
+  renderChat(true);
+  try {
+    const apiMessages = S.chat.map((m,i)=>{
+      if (m.role==='user' && i===S.chat.length-1){
+        return { role:'user', content:
+`You are the AI strategist inside Brandon's household financial planning app. Current live financial snapshot:
+${JSON.stringify(buildSnapshot(), null, 1)}
+
+Style rules: brutally direct, quantitative, terse. No pandering, no "on the other hand" deflection. Give a clear recommendation with the reasoning and the key risk. Use the actual numbers from the snapshot. If a question requires data you don't have (e.g., risk tolerance, fund options in his 401k), say exactly what's missing. You are providing educational strategy analysis, not licensed financial advice — do not repeat a disclaimer every message; the app displays one.
+
+Brandon's question: ${m.content}` };
+      }
+      return { role:m.role==='ai'?'assistant':'user', content:m.content };
+    });
+    const headers = {'Content-Type':'application/json'};
+    if (apiKey){
+      headers['x-api-key'] = apiKey;
+      headers['anthropic-version'] = '2023-06-01';
+      headers['anthropic-dangerous-direct-browser-access'] = 'true';
+    }
+    const resp = await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST', headers,
+      body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:1500, messages:apiMessages,
+        tools:[{type:'web_search_20250305', name:'web_search'}] })
+    });
+    const data = await resp.json();
+    if (!resp.ok || data.error){
+      S.chat.push({role:'ai', content:'API error '+resp.status+': '+(data.error&&data.error.message||JSON.stringify(data).slice(0,300))});
+    } else {
+      const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n').trim();
+      S.chat.push({role:'ai', content: text || 'Empty response. Try again.'});
+    }
+  } catch(e){
+    S.chat.push({role:'ai', content:'Request failed: '+e.message+(apiKey?'\n\nKey is set but the call still failed \u2014 check the key is valid and has credit at console.anthropic.com.':'\n\nThis copy is running outside Claude, so it needs your own Anthropic API key. Paste one in the API key field above (get one at console.anthropic.com \u2192 API Keys). It stores on this device only \u2014 never in the file.')});
+  }
+  aiBusy = false; save(); renderChat(false);
+}
+function renderChat(busy){
+  const box = document.getElementById('chatBox');
+  if (!box) return;
+  box.innerHTML = S.chat.map(m=>`<div class="msg ${m.role}">${m.content.replace(/</g,'&lt;')}</div>`).join('')
+    + (busy?'<div class="msg ai"><span class="spin"></span> Analyzing your numbers…</div>':'');
+  box.scrollTop = box.scrollHeight;
+}
+const QUICK = [
+  'Rate my portfolio strategy. Pull current prices for my tickers via web search. Score each dimension 0-10 with one-line reasoning: Diversification, Concentration risk, Options risk (assignment/expiry/sizing), Fit vs my retirement goal and horizon, Tax placement. Then overall grade and the SINGLE highest-impact fix.',
+  'Review my overall investment strategy given this snapshot',
+  'Pay off the 5.6% student loans early vs invest the surplus — run the numbers',
+  'Am I on pace for retirement? Use the Monte Carlo result if present. What single change moves the needle most?',
+  'Stress test: Brandon single-income for 12 months',
+  'Recommended asset allocation framework for our age and surplus'
+];
+const vStrategy = {
+html(){
+  return `
+  <div class="card"><h3>AI Strategy Advisor</h3>
+    <p class="note" style="margin-bottom:10px">Sends your live snapshot (all tabs) to Claude for strategy analysis. Educational analysis, not licensed financial advice — verify before acting.</p>
+    <div class="row" style="margin-bottom:10px">
+      <span class="nm">API key ${apiKey?'<span class="pos">✓ set</span>':'<span class="neg">required for standalone use</span>'}</span>
+      <input type="text" id="keyInput" placeholder="sk-ant-…" value="${apiKey?'••••••••':''}" style="width:45%" onfocus="if(this.value==='••••••••')this.value=''">
+      <button class="btn sm" onclick="saveKey(document.getElementById('keyInput').value)">Save</button>
+    </div>
+    <div class="quick">${QUICK.map((q,i)=>`<button class="btn ghost sm" onclick="askAI(QUICK[${i}])">${q.split('—')[0].split('?')[0].slice(0,42)}…</button>`).join('')}</div>
+    <div class="chat-box" id="chatBox"></div>
+    <div class="chat-input-row">
+      <input type="text" id="chatInput" placeholder="Ask about strategy, allocation, payoff order…" onkeydown="if(event.key==='Enter'){askAI(this.value);this.value=''}">
+      <button class="btn" onclick="const i=document.getElementById('chatInput');askAI(i.value);i.value=''">Send</button>
+    </div>
+    <div style="margin-top:8px"><button class="btn danger sm" onclick="S.chat=[];save();renderContent()">Clear conversation</button></div>
+  </div>`;
+},
+after(){ renderChat(false); }};
+
+/* ============ INIT ============ */
+(async function(){
+  await loadState();
+  apiKey = (await store.get('finapp-apikey')) || '';
+  await loadSync();
+  if (syncCfg.autoPull && syncCfg.token && syncCfg.repo) await repoPull();
+  renderTabs();
+  renderContent();
+  setSub('State persists across sessions · ' + nowYM());
+})();
+</script>
+</body>
+</html>
