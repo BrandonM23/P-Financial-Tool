@@ -644,15 +644,20 @@ html(){
 
 /* ============ RETIREMENT ============ */
 const NEST_EGG_INCLUDE = /retirement|401k|403b|ira|brokerage|investment/i;
-const NEST_EGG_EXCLUDE = /home|house|property|cash|emergency/i;
+const NEST_EGG_CASH    = /cash|savings|checking/i;
+const NEST_EGG_EXCLUDE = /home|house|property/i;
 function nestEggComponents(){
-  const items = S.assets.filter(a => NEST_EGG_INCLUDE.test(a.name) && !NEST_EGG_EXCLUDE.test(a.name));
-  return { items, portVal: portfolioTotal() };
+  const investItems = S.assets.filter(a => NEST_EGG_INCLUDE.test(a.name) && !NEST_EGG_EXCLUDE.test(a.name));
+  const cashItems   = S.assets.filter(a => NEST_EGG_CASH.test(a.name)    && !NEST_EGG_EXCLUDE.test(a.name));
+  const cashTotal   = cashItems.reduce((s,a)=>s+Number(a.amt||0),0);
+  const goalsEarmarked = S.goals.reduce((s,g)=>s+Number(g.saved||0),0);
+  const excessCash  = Math.max(0, cashTotal - goalsEarmarked);
+  return { investItems, portVal: portfolioTotal(), cashItems, cashTotal, goalsEarmarked, excessCash };
 }
 function nestEggValue(){
   if (S.retire.nestEggOverride) return Number(S.retire.currentNestEgg||0);
-  const { items, portVal } = nestEggComponents();
-  return items.reduce((s,a)=>s+Number(a.amt||0),0) + portVal;
+  const { investItems, portVal, excessCash } = nestEggComponents();
+  return investItems.reduce((s,a)=>s+Number(a.amt||0),0) + portVal + excessCash;
 }
 function calcSS(grossAnnual, claimAge){
   // Estimate AIME assuming current salary reflects career average (35-yr history)
@@ -726,15 +731,18 @@ html(){
     <div class="row"><span class="nm">Expected return %</span><input type="number" value="${r.returnPct}" step="0.5" onchange="S.retire.returnPct=Number(this.value);save();renderContent()"></div>
     <div class="row"><span class="nm">Current age</span><input type="number" value="${r.currentAge}" onchange="S.retire.currentAge=Number(this.value);save();renderContent()"></div>
     ${(()=>{
-      const { items, portVal } = nestEggComponents();
-      const derivedTotal = items.reduce((s,a)=>s+Number(a.amt||0),0) + portVal;
+      const { investItems, portVal, cashItems, cashTotal, goalsEarmarked, excessCash } = nestEggComponents();
+      const derivedTotal = investItems.reduce((s,a)=>s+Number(a.amt||0),0) + portVal + excessCash;
       return `<div style="background:var(--surface2);border-radius:6px;padding:10px;margin:6px 0">
         <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:6px">NEST EGG ${r.nestEggOverride?'(OVERRIDE)':'(AUTO-DERIVED)'}</div>
         ${r.nestEggOverride
           ? `<div class="row" style="border:none;padding:2px 0"><span class="nm">Override value</span><input type="number" value="${r.currentNestEgg||0}" style="width:130px" onchange="S.retire.currentNestEgg=Number(this.value);save();renderContent()"></div>`
-          : `${items.map(a=>`<div class="row" style="border:none;padding:2px 0"><span class="nm">${a.name}</span><span>${fmt(Number(a.amt||0))}</span></div>`).join('')}
+          : `${investItems.map(a=>`<div class="row" style="border:none;padding:2px 0"><span class="nm">${a.name}</span><span>${fmt(Number(a.amt||0))}</span></div>`).join('')}
              ${portVal!==0?`<div class="row" style="border:none;padding:2px 0"><span class="nm">Portfolio (tracked)</span><span>${fmt(portVal)}</span></div>`:''}
-             ${items.length===0&&portVal===0?`<p class="note">No assets match retirement/401k/IRA/brokerage/investment. Add assets on Net Worth tab or enable override.</p>`:''}
+             ${cashItems.length>0?`<div class="row" style="border:none;padding:2px 0;color:var(--muted)"><span class="nm">Cash/savings (gross)</span><span>${fmt(cashTotal)}</span></div>
+             <div class="row" style="border:none;padding:2px 0;color:var(--muted)"><span class="nm">− Goals earmarked</span><span>−${fmt(goalsEarmarked)}</span></div>
+             <div class="row" style="border:none;padding:2px 0"><span class="nm">Excess cash</span><span>${fmt(excessCash)}</span></div>`:''}
+             ${investItems.length===0&&portVal===0&&excessCash===0?`<p class="note">No investable assets found. Add assets on Net Worth tab or enable override.</p>`:''}
              <div class="row" style="border-top:1px solid var(--border);padding-top:6px;margin-top:4px;font-weight:600"><span>Total</span><span>${fmt(derivedTotal)}</span></div>`}
         <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;cursor:pointer">
           <input type="checkbox" ${r.nestEggOverride?'checked':''} onchange="S.retire.nestEggOverride=this.checked;if(!this.checked){}save();renderContent()">
