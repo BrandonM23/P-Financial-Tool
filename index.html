@@ -123,9 +123,11 @@ const DEFAULTS = {
   view: 'monthly',
   income: { brandonGross: 100000, brandonRoth401kPct: 10, minsuGross: 60000, minsuNonTaxPct: 0, minsuRoth401kPct: 6, salaryGrowthPct: 3 },
   expenses: [ {name:'Housing costs', amt:1500}, {name:'Utilities', amt:300}, {name:'Food & dining', amt:800}, {name:'Transportation', amt:300}, {name:'Misc', amt:400} ],
+  oneOffExpenses: [],
+  expenseBenchmarkPct: 50,
   debts: [ {name:'Mortgage', balance:250000, payment:1500, end:'2054-01'} ],
   assets: [ {name:'Home value', amt:300000}, {name:'Retirement accounts', amt:100000}, {name:'Cash', amt:20000} ],
-  retire: { monthlySpend:6000, withdrawalPct:4, returnPct:7, inflationPct:2.5, currentAge:35, currentNestEgg:100000 },
+  retire: { monthlySpend:6000, withdrawalPct:4, returnPct:7, inflationPct:2.5, currentAge:35, currentNestEgg:100000, brandonSS:0, minsuSS:0, ssAge:67, brandonSSManual:false, minsuSSManual:false },
   goals: [ {name:'Emergency fund', target:30000, saved:10000, monthly:500} ],
   portfolio: [ {kind:'stock', ticker:'VTI', qty:10, price:280} ],
   sim: { years:25, meanPct:7, volPct:15, runs:1000, investPctOfSurplus:100 },
@@ -150,7 +152,7 @@ const store = {
 };
 async function loadState(){
   const v = await store.get('finapp-state');
-  if (v) { try { S = JSON.parse(v); if(!S.portfolio)S.portfolio=DEFAULTS.portfolio; if(!S.sim)S.sim={...DEFAULTS.sim}; return; } catch(e){} }
+  if (v) { try { S = JSON.parse(v); if(!S.portfolio)S.portfolio=DEFAULTS.portfolio; if(!S.sim)S.sim={...DEFAULTS.sim}; if(!S.oneOffExpenses)S.oneOffExpenses=[]; if(S.expenseBenchmarkPct==null)S.expenseBenchmarkPct=50; if(!S.retire.brandonSS)S.retire.brandonSS=0; if(!S.retire.minsuSS)S.retire.minsuSS=0; if(S.retire.ssAge==null)S.retire.ssAge=67; if(S.retire.brandonSSManual==null)S.retire.brandonSSManual=false; if(S.retire.minsuSSManual==null)S.retire.minsuSSManual=false; return; } catch(e){} }
   S = JSON.parse(JSON.stringify(DEFAULTS));
 }
 let saveTimer = null;
@@ -265,7 +267,7 @@ async function repoPull(){
 /* Six top-level groups; multi-view groups get a sub-tab bar. */
 const GROUPS = [
   { name:'Overview',    views:['Overview'] },
-  { name:'Cash Flow',   views:['Income','Expenses','Debt'] },
+  { name:'Budget',   views:['Income','Expenses','Debt'] },
   { name:'Position',    views:['Net Worth','Portfolio'] },
   { name:'Future',      views:['Retirement','Simulation','Forecast','Goals'] },
   { name:'AI Strategy', views:['AI Strategy'] },
@@ -424,8 +426,39 @@ html(){
 /* ============ EXPENSES ============ */
 const vExpenses = {
 html(){
-  const total = S.expenses.reduce((a,e)=>a+Number(e.amt||0),0);
-  return `<div class="card"><h3>Monthly Expenses · ${fmt(total)}/mo · ${fmt(total*12)}/yr</h3>
+  const mo = S.expenses.reduce((a,e)=>a+Number(e.amt||0),0);
+  const t = calcHousehold(S.income);
+  const netMo = t.netMonthly;
+  const bp = S.expenseBenchmarkPct||50;
+  const benchmark = netMo * bp/100;
+  const vs = mo - benchmark;
+  const pct = netMo > 0 ? (mo/netMo*100).toFixed(0) : 0;
+  const oneOffs = S.oneOffExpenses||[];
+  const oneOffTotal = oneOffs.reduce((a,x)=>a+Number(x.amt||0),0);
+  return `
+  <div class="kpi-row">
+    <div class="kpi"><div class="v">${fmt(mo)}</div><div class="l">MONTHLY RECURRING</div></div>
+    <div class="kpi"><div class="v">${fmt(mo*12)}</div><div class="l">ANNUAL RECURRING</div></div>
+    <div class="kpi"><div class="v">${pct}%</div><div class="l">OF NET PAY</div></div>
+    <div class="kpi"><div class="v ${vs>0?'neg':'pos'}">${vs>0?'+':''}${fmt(vs)}</div><div class="l">VS ${bp}% BENCHMARK</div></div>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+    <span class="nm">Spend benchmark</span>
+    <input type="number" min="1" max="100" value="${bp}" style="width:70px" onchange="S.expenseBenchmarkPct=Math.max(1,Math.min(100,Number(this.value)));save();renderContent()">
+    <span class="note">% of monthly net pay</span>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">
+    <div class="card" style="margin:0">
+      <h3>12-Month Spend Projection</h3>
+      <div class="chart-wrap"><canvas id="expChart"></canvas></div>
+      <p class="note" style="margin-top:6px">Dashed blue = recurring · Dashed green = benchmark · Orange = total incl. one-offs</p>
+    </div>
+    <div class="card" style="margin:0">
+      <h3>Expense Mix</h3>
+      <div style="position:relative;max-height:260px"><canvas id="expPie"></canvas></div>
+    </div>
+  </div>
+  <div class="card"><h3>Monthly Expenses · ${fmt(mo)}/mo · ${fmt(mo*12)}/yr</h3>
   ${S.expenses.map((e,i)=>`
     <div class="row">
       <input type="text" value="${e.name.replace(/"/g,'&quot;')}" style="width:48%" onchange="S.expenses[${i}].name=this.value;save()">
@@ -434,7 +467,113 @@ html(){
     </div>`).join('')}
   <div style="margin-top:10px"><button class="btn ghost sm" onclick="S.expenses.push({name:'New item',amt:0});save();renderContent()">+ Add line item</button></div>
   <p class="note" style="margin-top:8px">Food & dining is benchmark-driven (~12% of net for your income band). Adjust if actuals diverge.</p>
+  </div>
+  <div class="card"><h3>One-Off Expenses${oneOffs.length>0?` · ${fmt(oneOffTotal)} total tracked`:''}</h3>
+  <p class="note" style="margin-bottom:10px">Non-recurring costs — vacation, home repair, medical, etc. Appear as spikes in the chart above.</p>
+  ${oneOffs.map((e,i)=>`
+    <div class="row">
+      <input type="text" value="${e.name.replace(/"/g,'&quot;')}" style="width:36%" onchange="S.oneOffExpenses[${i}].name=this.value;save()">
+      <input type="number" value="${e.amt}" style="width:22%" onchange="S.oneOffExpenses[${i}].amt=Number(this.value);save();renderContent()">
+      <input type="month" value="${e.date||''}" onchange="S.oneOffExpenses[${i}].date=this.value;save();renderContent()">
+      <button class="btn danger sm" onclick="S.oneOffExpenses.splice(${i},1);save();renderContent()">✕</button>
+    </div>`).join('')}
+  <div style="margin-top:10px"><button class="btn ghost sm" onclick="if(!S.oneOffExpenses)S.oneOffExpenses=[];S.oneOffExpenses.push({name:'New item',amt:0,date:''});save();renderContent()">+ Add one-off</button></div>
   </div>`;
+},
+after(){
+  const mo = S.expenses.reduce((a,e)=>a+Number(e.amt||0),0);
+  const netMo = calcHousehold(S.income).netMonthly;
+  const benchmark = Math.round(netMo * (S.expenseBenchmarkPct||50)/100);
+  const now = new Date();
+  const labels = [], recurData = [], totalData = [];
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth()+i, 1);
+    const ym = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    labels.push(d.toLocaleString('default',{month:'short',year:'2-digit'}));
+    const oneOff = (S.oneOffExpenses||[]).filter(x=>x.date===ym).reduce((a,x)=>a+Number(x.amt||0),0);
+    recurData.push(mo);
+    totalData.push(mo+oneOff);
+  }
+  const ctx = document.getElementById('expChart');
+  if (!ctx) return;
+  if (charts.expChart) { charts.expChart.destroy(); delete charts.expChart; }
+  charts.expChart = new Chart(ctx, {
+    type:'line',
+    data:{
+      labels,
+      datasets:[
+        { label:'Total (incl. one-offs)', data:totalData, borderColor:'#e07b54', backgroundColor:'rgba(224,123,84,0.12)', fill:true, tension:0.3, pointRadius:4, pointHoverRadius:6 },
+        { label:'Recurring baseline', data:recurData, borderColor:'#6a9fb5', backgroundColor:'transparent', borderDash:[6,3], tension:0, pointRadius:0 },
+        { label:'50% Net Pay Benchmark', data:Array(12).fill(benchmark), borderColor:'#7dc98f', backgroundColor:'transparent', borderDash:[3,3], tension:0, pointRadius:0 }
+      ]
+    },
+    options:{
+      responsive:true,
+      plugins:{
+        legend:{position:'bottom'},
+        tooltip:{callbacks:{label:c=>' '+fmt(c.raw)}}
+      },
+      scales:{
+        y:{ticks:{callback:v=>'$'+Math.round(v/1000)+'k'}, beginAtZero:false}
+      }
+    }
+  });
+
+  // Pie chart — expense mix
+  const pieCtx = document.getElementById('expPie');
+  if (pieCtx) {
+    if (charts.expPie) { charts.expPie.destroy(); delete charts.expPie; }
+    const pieItems = S.expenses.filter(e=>Number(e.amt||0)>0);
+    const pieTotal = pieItems.reduce((a,e)=>a+Number(e.amt),0);
+    const palette = ['#6a9fb5','#e07b54','#7dc98f','#d4a843','#b07db5','#e07b7b','#5fa88f','#a8865f'];
+    const segmentLabels = {
+      id:'segmentLabels',
+      afterDatasetsDraw(chart){
+        const { ctx } = chart;
+        const meta = chart.getDatasetMeta(0);
+        const total = chart.data.datasets[0].data.reduce((a,b)=>a+b,0);
+        meta.data.forEach((arc, i) => {
+          const span = arc.endAngle - arc.startAngle;
+          if (span < 0.35) return; // skip slivers — no room for text
+          const mid = (arc.startAngle + arc.endAngle) / 2;
+          const r = (arc.innerRadius + arc.outerRadius) / 2;
+          const x = arc.x + Math.cos(mid) * r;
+          const y = arc.y + Math.sin(mid) * r;
+          const val = chart.data.datasets[0].data[i];
+          const pct = total > 0 ? (val/total*100).toFixed(0) : 0;
+          ctx.save();
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 11px sans-serif';
+          ctx.fillText(pct+'%', x, y-7);
+          ctx.font = '10px sans-serif';
+          ctx.fillText(fmt(val), x, y+7);
+          ctx.restore();
+        });
+      }
+    };
+    charts.expPie = new Chart(pieCtx, {
+      type:'doughnut',
+      plugins:[segmentLabels],
+      data:{
+        labels: pieItems.map(e=>e.name),
+        datasets:[{ data: pieItems.map(e=>Number(e.amt)), backgroundColor: palette.slice(0,pieItems.length), borderWidth:2 }]
+      },
+      options:{
+        responsive:true,
+        maintainAspectRatio:true,
+        plugins:{
+          legend:{ position:'bottom', labels:{ font:{size:11}, boxWidth:12, padding:8 } },
+          tooltip:{ callbacks:{ label: c => {
+            const val = c.raw;
+            const pct = pieTotal>0 ? (val/pieTotal*100).toFixed(1) : 0;
+            return ` ${c.label}: ${fmt(val)} (${pct}%)`;
+          }}}
+        }
+      }
+    });
+  }
 }};
 
 /* ============ DEBT ============ */
@@ -504,9 +643,26 @@ html(){
 }};
 
 /* ============ RETIREMENT ============ */
-function retireCalc(monthlyContrib, retn){
+function calcSS(grossAnnual, claimAge){
+  // Estimate AIME assuming current salary reflects career average (35-yr history)
+  const aime = grossAnnual / 12;
+  // 2026 PIA bend points
+  const bp1 = 1226, bp2 = 7391;
+  let pia = aime <= bp1
+    ? aime * 0.90
+    : aime <= bp2
+      ? bp1 * 0.90 + (aime - bp1) * 0.32
+      : bp1 * 0.90 + (bp2 - bp1) * 0.32 + (aime - bp2) * 0.15;
+  // Claiming age adjustment vs FRA 67 (born 1960+)
+  const fra = 67, years = claimAge - fra;
+  const factor = years >= 0
+    ? 1 + years * 0.08
+    : years >= -3 ? 1 + years * 0.0667 : 1 - 3*0.0667 + (years+3)*0.05;
+  return Math.round(pia * factor);
+}
+function retireCalc(monthlyContrib, retn, targetOverride){
   const r = S.retire;
-  const target = (r.monthlySpend*12) / (r.withdrawalPct/100);
+  const target = targetOverride !== undefined ? targetOverride : (r.monthlySpend*12) / (r.withdrawalPct/100);
   const mRate = retn/100/12;
   let bal = r.currentNestEgg, months = 0;
   while (bal < target && months < 12*60){ bal = bal*(1+mRate) + monthlyContrib; months++; }
@@ -518,45 +674,93 @@ html(){
   const p = monthlyPicture(nowYM());
   const t = p.tax;
   const contrib = Math.max(0, p.surplus) + t.rothMonthly;
-  const rc = retireCalc(contrib, r.returnPct);
+  const ssAge = r.ssAge||67;
+  const bEst = calcSS(S.income.brandonGross, ssAge);
+  const mEst = calcSS(S.income.minsuGross, ssAge);
+  const bSS = r.brandonSSManual ? Number(r.brandonSS||0) : bEst;
+  const mSS = r.minsuSSManual ? Number(r.minsuSS||0) : mEst;
+  const totalSS = bSS + mSS;
+  const ssAdjSpend = Math.max(0, r.monthlySpend - totalSS);
+  const fullTarget = (r.monthlySpend*12) / (r.withdrawalPct/100);
+  const ssTarget = (ssAdjSpend*12) / (r.withdrawalPct/100);
+  const rc = retireCalc(contrib, r.returnPct, ssTarget);
   return `
+  <div class="kpi-row">
+    <div class="kpi">
+      <div class="v">${fmtK(fullTarget)}</div><div class="l">NEST EGG (NO SS)</div>
+      <div class="v pos" style="font-size:1.1rem;margin-top:4px">${fmtK(ssTarget)}</div><div class="l">WITH SS (AGE ${ssAge})</div>
+    </div>
+    <div class="kpi">
+      <div class="v">${fmt(r.monthlySpend)}/mo</div><div class="l">MONTHLY SPEND TARGET</div>
+      <div style="margin-top:6px;font-size:11px;line-height:1.7">
+        <div><span style="color:var(--pos)">${fmt(totalSS)}</span> SS income</div>
+        <div><span style="color:var(--gold)">${fmt(ssAdjSpend)}</span> from portfolio</div>
+      </div>
+    </div>
+    <div class="kpi"><div class="v ${rc.years<60?'pos':'neg'}">${rc.years<60?rc.years.toFixed(1)+' yrs':'>60 yrs'}</div><div class="l">TIME TO TARGET (AGE ${rc.years<60?Math.round(rc.ageAt):'—'})</div></div>
+  </div>
+  <div class="card"><h3>Portfolio Projection</h3><div class="chart-wrap"><canvas id="retChart"></canvas></div>
+  <p class="note" style="margin-top:8px">*Assumes 100% of surplus + Roth contributions are invested every month. SS-adjusted target = what portfolio must cover after SS income. If surplus sits in checking, you are materially behind this curve.</p></div>
+  <div class="card"><h3>Sensitivity: Years to SS-Adjusted Target</h3><table><thead><tr><th>Invested /mo</th><th>5% ret</th><th>7% ret</th><th>9% ret</th></tr></thead><tbody>
+  ${[0.5,0.75,1.0].map(f=>{
+    const c = contrib*f;
+    return `<tr><td>${fmt(c)} (${Math.round(f*100)}%)</td>${[5,7,9].map(rr=>{
+      const x = retireCalc(c, rr, ssTarget); return `<td>${x.years<60?x.years.toFixed(1):'—'}</td>`;
+    }).join('')}</tr>`;
+  }).join('')}
+  </tbody></table></div>
   <div class="card"><h3>Inputs</h3>
     <div class="row"><span class="nm">Desired retirement spend /mo (today's $)</span><input type="number" value="${r.monthlySpend}" onchange="S.retire.monthlySpend=Number(this.value);save();renderContent()"></div>
     <div class="row"><span class="nm">Withdrawal rate %</span><input type="number" value="${r.withdrawalPct}" step="0.1" onchange="S.retire.withdrawalPct=Number(this.value);save();renderContent()"></div>
     <div class="row"><span class="nm">Expected return %</span><input type="number" value="${r.returnPct}" step="0.5" onchange="S.retire.returnPct=Number(this.value);save();renderContent()"></div>
     <div class="row"><span class="nm">Current age</span><input type="number" value="${r.currentAge}" onchange="S.retire.currentAge=Number(this.value);save();renderContent()"></div>
     <div class="row"><span class="nm">Current nest egg</span><input type="number" value="${r.currentNestEgg}" onchange="S.retire.currentNestEgg=Number(this.value);save();renderContent()"></div>
-  </div>
-  <div class="kpi-row">
-    <div class="kpi"><div class="v">${fmtK(rc.target)}</div><div class="l">NEST EGG NEEDED (${r.withdrawalPct}% RULE)</div></div>
-    <div class="kpi"><div class="v">${fmt(contrib)}</div><div class="l">ASSUMED MONTHLY CONTRIBUTION*</div></div>
-    <div class="kpi"><div class="v ${rc.years<60?'pos':'neg'}">${rc.years<60?rc.years.toFixed(1)+' yrs':'>60 yrs'}</div><div class="l">TIME TO TARGET (AGE ${rc.years<60?Math.round(rc.ageAt):'—'})</div></div>
-  </div>
-  <div class="card"><h3>Portfolio Projection</h3><div class="chart-wrap"><canvas id="retChart"></canvas></div>
-  <p class="note" style="margin-top:8px">*Assumes 100% of surplus + Roth contributions are invested every month. If surplus sits in checking, you are materially behind this curve.</p></div>
-  <div class="card"><h3>Sensitivity: Years to Target</h3><table><thead><tr><th>Invested /mo</th><th>5% ret</th><th>7% ret</th><th>9% ret</th></tr></thead><tbody>
-  ${[0.5,0.75,1.0].map(f=>{
-    const c = contrib*f;
-    return `<tr><td>${fmt(c)} (${Math.round(f*100)}%)</td>${[5,7,9].map(rr=>{
-      const x = retireCalc(c, rr); return `<td>${x.years<60?x.years.toFixed(1):'—'}</td>`;
-    }).join('')}</tr>`;
-  }).join('')}
-  </tbody></table></div>`;
+    <div style="border-top:1px solid var(--border);margin-top:10px;padding-top:10px">
+      <div class="row"><span class="nm">SS claim age</span><input type="number" value="${ssAge}" min="62" max="70" onchange="S.retire.ssAge=Number(this.value);save();renderContent()"></div>
+      <div class="row" style="flex-wrap:wrap;gap:4px">
+        <span class="nm" style="min-width:180px">Brandon SS /mo</span>
+        ${r.brandonSSManual
+          ? `<input type="number" value="${r.brandonSS||0}" style="width:100px" onchange="S.retire.brandonSS=Number(this.value);save();renderContent()">
+             <button class="btn ghost sm" onclick="S.retire.brandonSSManual=false;save();renderContent()">↺ Use estimate</button>`
+          : `<span style="font-weight:600;color:var(--pos)">${fmt(bEst)}</span>
+             <span class="note" style="margin-left:4px">SSA estimate</span>
+             <button class="btn ghost sm" onclick="S.retire.brandonSSManual=true;S.retire.brandonSS=${bEst};save();renderContent()">Override</button>`}
+      </div>
+      <div class="row" style="flex-wrap:wrap;gap:4px">
+        <span class="nm" style="min-width:180px">Minsu SS /mo</span>
+        ${r.minsuSSManual
+          ? `<input type="number" value="${r.minsuSS||0}" style="width:100px" onchange="S.retire.minsuSS=Number(this.value);save();renderContent()">
+             <button class="btn ghost sm" onclick="S.retire.minsuSSManual=false;save();renderContent()">↺ Use estimate</button>`
+          : `<span style="font-weight:600;color:var(--pos)">${fmt(mEst)}</span>
+             <span class="note" style="margin-left:4px">SSA estimate</span>
+             <button class="btn ghost sm" onclick="S.retire.minsuSSManual=true;S.retire.minsuSS=${mEst};save();renderContent()">Override</button>`}
+      </div>
+      <p class="note" style="margin-top:6px">Estimates use 2026 SSA bend points ($1,226/$7,391) and assume current salary ≈ 35-yr career average. Adjust claim age (62–70) to see delay credits (+8%/yr after 67).</p>
+    </div>
+  </div>`;
 },
 after(){
   const r = S.retire, p = monthlyPicture(nowYM());
   const contrib = Math.max(0,p.surplus) + p.tax.rothMonthly;
   const mRate = r.returnPct/100/12;
-  const target = (r.monthlySpend*12)/(r.withdrawalPct/100);
+  const ssAge = r.ssAge||67;
+  const bSS = r.brandonSSManual ? Number(r.brandonSS||0) : calcSS(S.income.brandonGross, ssAge);
+  const mSS = r.minsuSSManual ? Number(r.minsuSS||0) : calcSS(S.income.minsuGross, ssAge);
+  const totalSS = bSS + mSS;
+  const fullTarget = (r.monthlySpend*12)/(r.withdrawalPct/100);
+  const ssAdjSpend = Math.max(0, r.monthlySpend - totalSS);
+  const ssTarget = (ssAdjSpend*12)/(r.withdrawalPct/100);
   const yrs = 30, data=[], labels=[];
   let bal = r.currentNestEgg;
   for (let y=0;y<=yrs;y++){ labels.push('Age '+(r.currentAge+y)); data.push(bal);
     for (let m=0;m<12;m++) bal = bal*(1+mRate)+contrib; }
+  if (charts.ret) { charts.ret.destroy(); delete charts.ret; }
   charts.ret = new Chart(document.getElementById('retChart'),{
     type:'line',
     data:{ labels, datasets:[
       {label:'Portfolio', data, borderColor:'#4ecdc4', backgroundColor:'rgba(78,205,196,0.12)', fill:true, tension:0.3, pointRadius:0},
-      {label:'Target', data:labels.map(()=>target), borderColor:'#e8c547', borderDash:[6,4], pointRadius:0, fill:false}
+      {label:'Target (no SS)', data:labels.map(()=>fullTarget), borderColor:'#9ca3af', borderDash:[4,4], pointRadius:0, fill:false},
+      {label:'SS-Adjusted Target', data:labels.map(()=>ssTarget), borderColor:'#e8c547', borderDash:[6,4], pointRadius:0, fill:false}
     ]},
     options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{labels:{color:'#9ca3af',font:{size:10}}}},
       scales:{ x:{ticks:{color:'#9ca3af',maxTicksLimit:8,font:{size:10}},grid:{color:'#2d2d4e'}}, y:{ticks:{color:'#9ca3af',callback:v=>fmtK(v)},grid:{color:'#2d2d4e'}} } }
