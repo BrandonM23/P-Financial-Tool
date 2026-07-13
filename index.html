@@ -127,7 +127,7 @@ const DEFAULTS = {
   expenseBenchmarkPct: 50,
   debts: [ {name:'Mortgage', balance:250000, payment:1500, end:'2054-01'} ],
   assets: [ {name:'Home value', amt:300000}, {name:'Retirement accounts', amt:100000}, {name:'Cash', amt:20000} ],
-  retire: { monthlySpend:6000, withdrawalPct:4, returnPct:7, inflationPct:2.5, currentAge:35, currentNestEgg:100000, brandonSS:0, minsuSS:0, ssAge:67, brandonSSManual:false, minsuSSManual:false },
+  retire: { monthlySpend:6000, withdrawalPct:4, returnPct:7, inflationPct:2.5, currentAge:35, currentNestEgg:100000, nestEggOverride:false, brandonSS:0, minsuSS:0, ssAge:67, brandonSSManual:false, minsuSSManual:false },
   goals: [ {name:'Emergency fund', target:30000, saved:10000, monthly:500} ],
   portfolio: [ {kind:'stock', ticker:'VTI', qty:10, price:280} ],
   sim: { years:25, meanPct:7, volPct:15, runs:1000, investPctOfSurplus:100 },
@@ -152,7 +152,7 @@ const store = {
 };
 async function loadState(){
   const v = await store.get('finapp-state');
-  if (v) { try { S = JSON.parse(v); if(!S.portfolio)S.portfolio=DEFAULTS.portfolio; if(!S.sim)S.sim={...DEFAULTS.sim}; if(!S.oneOffExpenses)S.oneOffExpenses=[]; if(S.expenseBenchmarkPct==null)S.expenseBenchmarkPct=50; if(!S.retire.brandonSS)S.retire.brandonSS=0; if(!S.retire.minsuSS)S.retire.minsuSS=0; if(S.retire.ssAge==null)S.retire.ssAge=67; if(S.retire.brandonSSManual==null)S.retire.brandonSSManual=false; if(S.retire.minsuSSManual==null)S.retire.minsuSSManual=false; return; } catch(e){} }
+  if (v) { try { S = JSON.parse(v); if(!S.portfolio)S.portfolio=DEFAULTS.portfolio; if(!S.sim)S.sim={...DEFAULTS.sim}; if(!S.oneOffExpenses)S.oneOffExpenses=[]; if(S.expenseBenchmarkPct==null)S.expenseBenchmarkPct=50; if(!S.retire.brandonSS)S.retire.brandonSS=0; if(!S.retire.minsuSS)S.retire.minsuSS=0; if(S.retire.ssAge==null)S.retire.ssAge=67; if(S.retire.brandonSSManual==null)S.retire.brandonSSManual=false; if(S.retire.minsuSSManual==null)S.retire.minsuSSManual=false; if(S.retire.nestEggOverride==null)S.retire.nestEggOverride=false; return; } catch(e){} }
   S = JSON.parse(JSON.stringify(DEFAULTS));
 }
 let saveTimer = null;
@@ -643,6 +643,17 @@ html(){
 }};
 
 /* ============ RETIREMENT ============ */
+const NEST_EGG_INCLUDE = /retirement|401k|403b|ira|brokerage|investment/i;
+const NEST_EGG_EXCLUDE = /home|house|property|cash|emergency/i;
+function nestEggComponents(){
+  const items = S.assets.filter(a => NEST_EGG_INCLUDE.test(a.name) && !NEST_EGG_EXCLUDE.test(a.name));
+  return { items, portVal: portfolioTotal() };
+}
+function nestEggValue(){
+  if (S.retire.nestEggOverride) return Number(S.retire.currentNestEgg||0);
+  const { items, portVal } = nestEggComponents();
+  return items.reduce((s,a)=>s+Number(a.amt||0),0) + portVal;
+}
 function calcSS(grossAnnual, claimAge){
   // Estimate AIME assuming current salary reflects career average (35-yr history)
   const aime = grossAnnual / 12;
@@ -664,7 +675,7 @@ function retireCalc(monthlyContrib, retn, targetOverride){
   const r = S.retire;
   const target = targetOverride !== undefined ? targetOverride : (r.monthlySpend*12) / (r.withdrawalPct/100);
   const mRate = retn/100/12;
-  let bal = r.currentNestEgg, months = 0;
+  let bal = nestEggValue(), months = 0;
   while (bal < target && months < 12*60){ bal = bal*(1+mRate) + monthlyContrib; months++; }
   return { target, months, years: months/12, ageAt: r.currentAge + months/12 };
 }
@@ -714,7 +725,23 @@ html(){
     <div class="row"><span class="nm">Withdrawal rate %</span><input type="number" value="${r.withdrawalPct}" step="0.1" onchange="S.retire.withdrawalPct=Number(this.value);save();renderContent()"></div>
     <div class="row"><span class="nm">Expected return %</span><input type="number" value="${r.returnPct}" step="0.5" onchange="S.retire.returnPct=Number(this.value);save();renderContent()"></div>
     <div class="row"><span class="nm">Current age</span><input type="number" value="${r.currentAge}" onchange="S.retire.currentAge=Number(this.value);save();renderContent()"></div>
-    <div class="row"><span class="nm">Current nest egg</span><input type="number" value="${r.currentNestEgg}" onchange="S.retire.currentNestEgg=Number(this.value);save();renderContent()"></div>
+    ${(()=>{
+      const { items, portVal } = nestEggComponents();
+      const derivedTotal = items.reduce((s,a)=>s+Number(a.amt||0),0) + portVal;
+      return `<div style="background:var(--surface2);border-radius:6px;padding:10px;margin:6px 0">
+        <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:6px">NEST EGG ${r.nestEggOverride?'(OVERRIDE)':'(AUTO-DERIVED)'}</div>
+        ${r.nestEggOverride
+          ? `<div class="row" style="border:none;padding:2px 0"><span class="nm">Override value</span><input type="number" value="${r.currentNestEgg||0}" style="width:130px" onchange="S.retire.currentNestEgg=Number(this.value);save();renderContent()"></div>`
+          : `${items.map(a=>`<div class="row" style="border:none;padding:2px 0"><span class="nm">${a.name}</span><span>${fmt(Number(a.amt||0))}</span></div>`).join('')}
+             ${portVal!==0?`<div class="row" style="border:none;padding:2px 0"><span class="nm">Portfolio (tracked)</span><span>${fmt(portVal)}</span></div>`:''}
+             ${items.length===0&&portVal===0?`<p class="note">No assets match retirement/401k/IRA/brokerage/investment. Add assets on Net Worth tab or enable override.</p>`:''}
+             <div class="row" style="border-top:1px solid var(--border);padding-top:6px;margin-top:4px;font-weight:600"><span>Total</span><span>${fmt(derivedTotal)}</span></div>`}
+        <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;cursor:pointer">
+          <input type="checkbox" ${r.nestEggOverride?'checked':''} onchange="S.retire.nestEggOverride=this.checked;if(!this.checked){}save();renderContent()">
+          Override nest egg manually
+        </label>
+      </div>`;
+    })()}
     <div style="border-top:1px solid var(--border);margin-top:10px;padding-top:10px">
       <div class="row"><span class="nm">SS claim age</span><input type="number" value="${ssAge}" min="62" max="70" onchange="S.retire.ssAge=Number(this.value);save();renderContent()"></div>
       <div class="row" style="flex-wrap:wrap;gap:4px">
@@ -751,7 +778,7 @@ after(){
   const ssAdjSpend = Math.max(0, r.monthlySpend - totalSS);
   const ssTarget = (ssAdjSpend*12)/(r.withdrawalPct/100);
   const yrs = 30, data=[], labels=[];
-  let bal = r.currentNestEgg;
+  let bal = nestEggValue();
   for (let y=0;y<=yrs;y++){ labels.push('Age '+(r.currentAge+y)); data.push(bal);
     for (let m=0;m<12;m++) bal = bal*(1+mRate)+contrib; }
   if (charts.ret) { charts.ret.destroy(); delete charts.ret; }
@@ -832,7 +859,7 @@ function runMonteCarlo(){
   const c = S.sim, r = S.retire;
   const p = monthlyPicture(nowYM());
   const contrib = (Math.max(0,p.surplus)*c.investPctOfSurplus/100) + p.tax.rothMonthly;
-  const start = r.currentNestEgg + portfolioTotal();
+  const start = nestEggValue();
   const target = (r.monthlySpend*12)/(r.withdrawalPct/100);
   const muM = c.meanPct/100/12, sigM = c.volPct/100/Math.sqrt(12);
   const years = c.years, runs = Math.min(5000, Math.max(100, c.runs));
@@ -966,7 +993,7 @@ function buildSnapshot(){
     annualSurplus: Math.round(a.surplus),
     debts: S.debts.map(d=>({name:d.name, balance:d.balance, payment:d.payment, endDate:d.end||'ongoing'})),
     assets: S.assets, netWorth: assets-debt,
-    retirement: { ...S.retire, targetNestEgg: Math.round((S.retire.monthlySpend*12)/(S.retire.withdrawalPct/100)) },
+    retirement: { ...S.retire, currentNestEgg: nestEggValue(), targetNestEgg: Math.round((S.retire.monthlySpend*12)/(S.retire.withdrawalPct/100)) },
     goals: S.goals,
     portfolio: { totalValue: Math.round(portfolioTotal()), holdings: S.portfolio },
     lastSimulation: lastSim ? { successPct:+lastSim.successPct.toFixed(0), medianEnd:Math.round(lastSim.endMedian), target:Math.round(lastSim.target), assumptions:S.sim } : 'not run',
