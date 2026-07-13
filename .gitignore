@@ -1,0 +1,4 @@
+# NEVER commit real financial data to the public repo
+finances-data.json
+financial-planner.html
+*.local.*
