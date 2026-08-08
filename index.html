@@ -83,11 +83,11 @@
   @keyframes sp { to { transform:rotate(360deg); } }
   @media (prefers-reduced-motion:reduce){ .spin{animation:none;} }
   /* Waterfall + inline pie layout */
-  .wf-row { display:flex; gap:16px; align-items:stretch; }
+  .wf-row { display:flex; gap:16px; }
   .wf-bar { flex:3; min-width:0; height:280px; position:relative; }
-  .wf-pie { flex:2; min-width:0; height:280px; position:relative; display:flex; flex-direction:column; gap:4px; }
-  .wf-pie-title { font-size:11px; color:var(--muted); text-align:center; margin:0; flex-shrink:0; }
-  .wf-pie canvas { flex:1; min-height:0; }
+  .wf-pie { flex:2; min-width:0; }
+  .wf-pie-title { font-size:11px; color:var(--muted); text-align:center; margin:0 0 4px; }
+  .wf-pie-wrap { position:relative; height:256px; }
 
   @media (max-width:520px){
     .header { position:static; }
@@ -104,9 +104,9 @@
     th, td { padding:5px 2px; }
     .msg { max-width:100%; }
     /* Stack waterfall and pie vertically on mobile */
-    .wf-row { flex-direction:column; gap:12px; }
+    .wf-row { flex-direction:column; }
     .wf-bar { height:220px; }
-    .wf-pie { height:260px; }
+    .wf-pie-wrap { height:230px; }
   }
 </style>
 </head>
@@ -446,12 +446,12 @@ html(){
     <div class="kpi"><div class="v">${((t.fedTax+t.stateTax+t.countyTax+t.fica)/t.gross*100).toFixed(1)}%</div><div class="l">EFFECTIVE TAX RATE</div></div>
   </div>
   <div class="card">
-    <h3>Cash Flow Waterfall <span class="note" style="font-size:11px;font-weight:400">· click bar to drill</span></h3>
+    <h3>Cash Flow Waterfall</h3>
     <div class="wf-row">
       <div class="wf-bar"><canvas id="cfChart"></canvas></div>
       <div class="wf-pie">
         <p class="wf-pie-title">${drillTitle}</p>
-        <canvas id="drillPie"></canvas>
+        <div class="wf-pie-wrap"><canvas id="drillPie"></canvas></div>
       </div>
     </div>
   </div>`;
