@@ -390,10 +390,11 @@ function overviewDrillData(segment, p, t, isAnnual){
     const debt  = p.debtPay;
     const exp   = p.exp;
     const disc  = Math.max(0, t.gross/txScale - taxes - roth - debt - exp);
+    const k401 = (t.roth + t.trad) / txScale;
     return {
       title:'Allocation',
-      labels:['Taxes','Roth 401k','Debt Pmts','Expenses','Discretionary'],
-      data:[taxes, roth, debt, exp, disc].map(Math.round),
+      labels:['Taxes','401k','Debt Pmts','Expenses','Discretionary'],
+      data:[taxes, k401, debt, exp, disc].map(Math.round),
       colors:['#ef4444','#8b5cf6','#f97316','#f59e0b','#10b981']
     };
   }
@@ -414,11 +415,18 @@ function overviewDrillData(segment, p, t, isAnnual){
     ].filter(x=>x.v>0);
     return { labels:taxItems.map(x=>x.l), data:taxItems.map(x=>Math.round(x.v/txScale)), colors:taxItems.map(x=>x.c) };
   }
-  if (segment==='Roth 401k') return {
-    labels:['Brandon','Minsu'],
-    data:[S.income.brandonGross*S.income.brandonRoth401kPct/100/txScale, S.income.minsuGross*S.income.minsuRoth401kPct/100/txScale].map(Math.round),
-    colors:['#8b5cf6','#ec4899']
-  };
+  if (segment==='401k') {
+    const bTrad = S.income.brandonGross*(S.income.brandonTrad401kPct||0)/100/txScale;
+    const mTrad = S.income.minsuGross*(S.income.minsuTrad401kPct||0)/100/txScale;
+    const bRoth = S.income.brandonGross*S.income.brandonRoth401kPct/100/txScale;
+    const mRoth = S.income.minsuGross*S.income.minsuRoth401kPct/100/txScale;
+    return {
+      title:'401k Breakdown',
+      labels:['Brandon Trad','Brandon Roth','Minsu Trad','Minsu Roth'].filter((_,i)=>[bTrad,bRoth,mTrad,mRoth][i]>0),
+      data:[bTrad,bRoth,mTrad,mRoth].filter(v=>v>0).map(Math.round),
+      colors:['#7c3aed','#8b5cf6','#db2777','#ec4899'].filter((_,i)=>[bTrad,bRoth,mTrad,mRoth][i]>0)
+    };
+  }
   if (segment==='Debt Pmts'){
     const ym = nowYM();
     const items = S.debts.map(d=>({name:d.name,val:activeDebtPayment(d,ym)*moMult})).filter(d=>d.val>0);
@@ -475,17 +483,19 @@ after(){
   const gross = t.gross / txScale;
   const taxes = (t.fedTax+t.stateTax+t.countyTax+t.fica) / txScale;
   const roth = t.roth / txScale;
+  const trad = t.trad / txScale;
+  const k401 = roth + trad;
   const debt = p.debtPay;  // already in display-period units from monthlyPicture/annualPicture
   const exp = p.exp;
-  const disc = Math.max(0, gross - taxes - roth - debt - exp);
+  const disc = Math.max(0, gross - taxes - k401 - debt - exp);
 
   // Build waterfall floating bars [lo, hi]
   let top = gross;
-  const wfLabels = ['Gross Income','Taxes','Roth 401k','Debt Pmts','Expenses','Discretionary'];
+  const wfLabels = ['Gross Income','Taxes','401k','Debt Pmts','Expenses','Discretionary'];
   const wfLo=[], wfHi=[], wfColors=[];
   wfLo.push(0); wfHi.push(gross); wfColors.push('#e8c547');
   wfLo.push(top-taxes); wfHi.push(top); wfColors.push('#ef4444'); top-=taxes;
-  wfLo.push(top-roth); wfHi.push(top); wfColors.push('#8b5cf6'); top-=roth;
+  wfLo.push(top-k401); wfHi.push(top); wfColors.push('#8b5cf6'); top-=k401;
   wfLo.push(top-debt); wfHi.push(top); wfColors.push('#f97316'); top-=debt;
   wfLo.push(top-exp); wfHi.push(top); wfColors.push('#f59e0b'); top-=exp;
   wfLo.push(0); wfHi.push(disc); wfColors.push('#10b981');
