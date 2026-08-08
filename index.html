@@ -132,7 +132,7 @@
 /* ============ STATE ============ */
 const DEFAULTS = {
   view: 'monthly',
-  income: { brandonGross: 100000, brandonRoth401kPct: 10, minsuGross: 60000, minsuNonTaxPct: 0, minsuRoth401kPct: 6, salaryGrowthPct: 3, taxState: 'NC', taxCountyRate: 0 },
+  income: { brandonGross: 100000, brandonRoth401kPct: 10, brandonTrad401kPct: 0, minsuGross: 60000, minsuNonTaxPct: 0, minsuRoth401kPct: 6, minsuTrad401kPct: 0, salaryGrowthPct: 3, taxState: 'NC', taxCountyRate: 0 },
   expenses: [ {name:'Housing costs', amt:1500}, {name:'Utilities', amt:300}, {name:'Food & dining', amt:800}, {name:'Transportation', amt:300}, {name:'Misc', amt:400} ],
   oneOffExpenses: [],
   expenseBenchmarkPct: 50,
@@ -163,7 +163,7 @@ const store = {
 };
 async function loadState(){
   const v = await store.get('finapp-state');
-  if (v) { try { S = JSON.parse(v); if(!S.portfolio)S.portfolio=DEFAULTS.portfolio; if(!S.sim)S.sim={...DEFAULTS.sim}; if(!S.oneOffExpenses)S.oneOffExpenses=[]; if(S.expenseBenchmarkPct==null)S.expenseBenchmarkPct=50; if(!S.retire.brandonSS)S.retire.brandonSS=0; if(!S.retire.minsuSS)S.retire.minsuSS=0; if(S.retire.ssAge==null)S.retire.ssAge=67; if(S.retire.brandonSSManual==null)S.retire.brandonSSManual=false; if(S.retire.minsuSSManual==null)S.retire.minsuSSManual=false; if(S.retire.nestEggOverride==null)S.retire.nestEggOverride=false; if(!S.income.taxState)S.income.taxState='NC'; if(S.income.taxCountyRate==null)S.income.taxCountyRate=0; return; } catch(e){} }
+  if (v) { try { S = JSON.parse(v); if(!S.portfolio)S.portfolio=DEFAULTS.portfolio; if(!S.sim)S.sim={...DEFAULTS.sim}; if(!S.oneOffExpenses)S.oneOffExpenses=[]; if(S.expenseBenchmarkPct==null)S.expenseBenchmarkPct=50; if(!S.retire.brandonSS)S.retire.brandonSS=0; if(!S.retire.minsuSS)S.retire.minsuSS=0; if(S.retire.ssAge==null)S.retire.ssAge=67; if(S.retire.brandonSSManual==null)S.retire.brandonSSManual=false; if(S.retire.minsuSSManual==null)S.retire.minsuSSManual=false; if(S.retire.nestEggOverride==null)S.retire.nestEggOverride=false; if(!S.income.taxState)S.income.taxState='NC'; if(S.income.taxCountyRate==null)S.income.taxCountyRate=0; if(S.income.brandonTrad401kPct==null)S.income.brandonTrad401kPct=0; if(S.income.minsuTrad401kPct==null)S.income.minsuTrad401kPct=0; return; } catch(e){} }
   S = JSON.parse(JSON.stringify(DEFAULTS));
 }
 let saveTimer = null;
@@ -242,8 +242,10 @@ function progressiveTax(taxable, brackets){
 }
 function calcHousehold(inc){
   const bG = inc.brandonGross, mG = inc.minsuGross;
-  const mNonTax = mG * inc.minsuNonTaxPct/100;
-  const incomeTaxableWages = bG + (mG - mNonTax);
+  const mNonTax  = mG * inc.minsuNonTaxPct/100;
+  const bTrad    = bG * (inc.brandonTrad401kPct||0)/100;
+  const mTrad    = mG * (inc.minsuTrad401kPct||0)/100;
+  const incomeTaxableWages = bG + (mG - mNonTax) - bTrad - mTrad;
   const fedTax = progressiveTax(incomeTaxableWages - FED_STD, FED_BRACKETS);
   // State tax — dynamic from S.income
   const sd = getStateTaxData(inc.taxState||'NC');
@@ -256,8 +258,9 @@ function calcHousehold(inc){
              + Math.min(mG, SS_WAGE_BASE)*SS_RATE + mG*MED_RATE
              + Math.max(0, bG+mG-ADD_MED_THRESH)*ADD_MED;
   const roth = bG*inc.brandonRoth401kPct/100 + mG*inc.minsuRoth401kPct/100;
-  const netAnnual = bG + mG - fedTax - stateTax - countyTax - fica - roth;
-  return { gross:bG+mG, fedTax, stateTax, countyTax, fica, roth, netAnnual, netMonthly:netAnnual/12, rothMonthly:roth/12 };
+  const trad = bTrad + mTrad;
+  const netAnnual = bG + mG - fedTax - stateTax - countyTax - fica - roth - trad;
+  return { gross:bG+mG, fedTax, stateTax, countyTax, fica, roth, trad, netAnnual, netMonthly:netAnnual/12, rothMonthly:roth/12 };
 }
 
 /* ============ CALC HELPERS ============ */
@@ -575,13 +578,15 @@ html(){
   </div>
   <div class="card"><h3>Brandon</h3>
     <div class="row"><span class="nm">Gross salary (annual)</span><input type="number" value="${i.brandonGross}" onchange="S.income.brandonGross=Number(this.value);save();renderContent()"></div>
-    <div class="row"><span class="nm">Roth 401k contribution %</span><input type="number" value="${i.brandonRoth401kPct}" step="0.5" onchange="S.income.brandonRoth401kPct=Number(this.value);save();renderContent()"></div>
-    <div class="note">Roth = post-tax. Contributing ${fmt(i.brandonGross*i.brandonRoth401kPct/100)}/yr.</div>
+    <div class="row"><span class="nm">Traditional 401k %</span><input type="number" value="${i.brandonTrad401kPct||0}" step="0.5" onchange="S.income.brandonTrad401kPct=Number(this.value);save();renderContent()"></div>
+    <div class="row"><span class="nm">Roth 401k %</span><input type="number" value="${i.brandonRoth401kPct}" step="0.5" onchange="S.income.brandonRoth401kPct=Number(this.value);save();renderContent()"></div>
+    <div class="note">Trad 401k reduces taxable income. Roth is post-tax. Total 401k: ${fmt(i.brandonGross*(i.brandonTrad401kPct||0)/100 + i.brandonGross*i.brandonRoth401kPct/100)}/yr.</div>
   </div>
   <div class="card"><h3>Minsu</h3>
     <div class="row"><span class="nm">Gross salary (annual)</span><input type="number" value="${i.minsuGross}" onchange="S.income.minsuGross=Number(this.value);save();renderContent()"></div>
     <div class="row"><span class="nm">Tips / non-taxable %</span><input type="number" value="${i.minsuNonTaxPct}" step="1" onchange="S.income.minsuNonTaxPct=Number(this.value);save();renderContent()"></div>
-    <div class="row"><span class="nm">Roth 401k contribution %</span><input type="number" value="${i.minsuRoth401kPct}" step="0.5" onchange="S.income.minsuRoth401kPct=Number(this.value);save();renderContent()"></div>
+    <div class="row"><span class="nm">Traditional 401k %</span><input type="number" value="${i.minsuTrad401kPct||0}" step="0.5" onchange="S.income.minsuTrad401kPct=Number(this.value);save();renderContent()"></div>
+    <div class="row"><span class="nm">Roth 401k %</span><input type="number" value="${i.minsuRoth401kPct}" step="0.5" onchange="S.income.minsuRoth401kPct=Number(this.value);save();renderContent()"></div>
     <div class="note">${fmt(mNonTax)}/yr excluded from income tax (still subject to FICA).</div>
   </div>
   <div class="card"><h3>Tax Location</h3>
@@ -598,8 +603,10 @@ html(){
     <div class="row"><span class="nm">${stateNames[i.taxState||'NC']} state</span><span>${fmt(t.stateTax)}</span></div>
     ${t.countyTax>0?`<div class="row"><span class="nm">County / local</span><span>${fmt(t.countyTax)}</span></div>`:''}
     <div class="row"><span class="nm">FICA (SS + Medicare)</span><span>${fmt(t.fica)}</span></div>
+    <div class="row"><span class="nm">Traditional 401k (pre-tax)</span><span>${fmt(t.trad)}</span></div>
     <div class="row"><span class="nm">Roth 401k (post-tax)</span><span>${fmt(t.roth)}</span></div>
-    <div class="row"><span class="nm" style="color:var(--gold)">Effective total rate</span><span style="color:var(--gold)">${(totalTax/t.gross*100).toFixed(1)}%</span></div>
+    <div class="row"><span class="nm" style="color:var(--gold)">Effective tax rate</span><span style="color:var(--gold)">${(totalTax/t.gross*100).toFixed(1)}%</span></div>
+    <div class="row"><span class="nm" style="color:var(--gold)">Total withheld from pay</span><span style="color:var(--gold)">${fmt(totalTax+t.trad+t.roth)}/yr · ${fmt((totalTax+t.trad+t.roth)/12)}/mo</span></div>
   </div>
   <div class="card"><h3>Assumptions</h3>
     <div class="row"><span class="nm">Salary growth %/yr</span><input type="number" value="${i.salaryGrowthPct}" step="0.5" onchange="S.income.salaryGrowthPct=Number(this.value);save();renderContent()"></div>
