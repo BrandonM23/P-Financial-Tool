@@ -369,10 +369,19 @@ let overviewDrill = null;
 function overviewDrillData(segment, p, t, isAnnual){
   const txScale = isAnnual ? 1 : 12;  // t.X is always annual; divide by txScale for display period
   const moMult  = isAnnual ? 12 : 1;  // monthly amounts; multiply by moMult for display period
-  if (segment==='Gross Income') {
-    const bG = S.income.brandonGross / txScale;
-    const mG = S.income.minsuGross / txScale;
-    return { labels:['Brandon','Minsu'], data:[Math.round(bG), Math.round(mG)], colors:['#e8c547','#f0d875'] };
+  // Default: full allocation (baseline view, also shown when Gross/Disc is clicked)
+  if (!segment || segment==='Gross Income' || segment==='Discretionary') {
+    const taxes = (t.fedTax+t.stateTax+t.countyTax+t.fica) / txScale;
+    const roth  = t.roth / txScale;
+    const debt  = p.debtPay;
+    const exp   = p.exp;
+    const disc  = Math.max(0, t.gross/txScale - taxes - roth - debt - exp);
+    return {
+      title:'Allocation',
+      labels:['Taxes','Roth 401k','Debt Pmts','Expenses','Discretionary'],
+      data:[taxes, roth, debt, exp, disc].map(Math.round),
+      colors:['#f87171','#a78bfa','#fb923c','#f97316','#34d399']
+    };
   }
   if (segment==='Taxes') {
     const taxItems = [
@@ -410,7 +419,8 @@ html(){
   const assets = S.assets.reduce((a,x)=>a+Number(x.amt||0),0);
   const debt = S.debts.reduce((a,d)=>a+Number(d.balance||0),0);
   const nw = assets - debt;
-  const dd = overviewDrill ? overviewDrillData(overviewDrill, p, t, isAnnual) : null;
+  const drillTitle = overviewDrill && overviewDrill!=='Gross Income' && overviewDrill!=='Discretionary'
+    ? overviewDrill+' Breakdown' : 'Allocation';
   return `
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
     <div class="toggle">
@@ -425,13 +435,15 @@ html(){
     <div class="kpi"><div class="v">${((t.fedTax+t.stateTax+t.countyTax+t.fica)/t.gross*100).toFixed(1)}%</div><div class="l">EFFECTIVE TAX RATE</div></div>
   </div>
   <div class="card">
-    <h3>Cash Flow Waterfall <span class="note" style="font-size:11px;font-weight:400">· click a bar to drill down</span></h3>
-    <div class="chart-wrap"><canvas id="cfChart"></canvas></div>
-  </div>
-  ${dd ? `<div class="card" style="animation:fadeIn .2s">
-    <h3>${overviewDrill} Breakdown <button class="btn ghost sm" style="float:right" onclick="overviewDrill=null;renderContent()">✕</button></h3>
-    <div style="max-height:260px;position:relative"><canvas id="drillPie"></canvas></div>
-  </div>` : ''}`;
+    <h3>Cash Flow Waterfall <span class="note" style="font-size:11px;font-weight:400">· click bar to drill</span></h3>
+    <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
+      <div style="flex:2;min-width:220px;height:260px;position:relative"><canvas id="cfChart"></canvas></div>
+      <div style="flex:1;min-width:160px">
+        <p style="font-size:11px;color:var(--muted);text-align:center;margin:0 0 4px">${drillTitle}</p>
+        <canvas id="drillPie"></canvas>
+      </div>
+    </div>
+  </div>`;
 },
 after(){
   const isAnnual = S.view==='annual';
@@ -485,7 +497,7 @@ after(){
     },
     options:{
       responsive:true, maintainAspectRatio:false,
-      onClick(evt, els){ if(els.length){ const seg=wfLabels[els[0].index]; overviewDrill=(overviewDrill===seg?null:seg); setTimeout(()=>{ renderContent(); if(overviewDrill) setTimeout(()=>{ const dc=document.getElementById('drillPie'); if(dc) dc.closest('.card').scrollIntoView({behavior:'smooth',block:'nearest'}); },60); },0); } },
+      onClick(evt, els){ if(els.length){ const seg=wfLabels[els[0].index]; overviewDrill=(seg==='Gross Income'||seg==='Discretionary')?null:(overviewDrill===seg?null:seg); setTimeout(renderContent,0); } },
       plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:c=>` ${fmt(Math.abs(c.raw[1]-c.raw[0]))}` } } },
       scales:{
         x:{ticks:{color:'#9ca3af',font:{size:10}},grid:{color:'#2d2d4e'}},
@@ -494,10 +506,9 @@ after(){
     }
   });
 
-  // Drilldown pie
-  const dd = overviewDrill ? overviewDrillData(overviewDrill, p, t, isAnnual) : null;
-  if (dd) {
-    const pieCtx = document.getElementById('drillPie');
+  // Always-visible pie (defaults to allocation; drills into segment when selected)
+  const dd = overviewDrillData(overviewDrill, p, t, isAnnual);
+  { const pieCtx = document.getElementById('drillPie');
     if (pieCtx) {
       const total = dd.data.reduce((a,b)=>a+b,0);
       const segLabels = {
