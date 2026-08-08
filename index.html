@@ -369,6 +369,11 @@ let overviewDrill = null;
 function overviewDrillData(segment, p, t, isAnnual){
   const txScale = isAnnual ? 1 : 12;  // t.X is always annual; divide by txScale for display period
   const moMult  = isAnnual ? 12 : 1;  // monthly amounts; multiply by moMult for display period
+  if (segment==='Gross Income') {
+    const bG = S.income.brandonGross / txScale;
+    const mG = S.income.minsuGross / txScale;
+    return { labels:['Brandon','Minsu'], data:[Math.round(bG), Math.round(mG)], colors:['#e8c547','#f0d875'] };
+  }
   if (segment==='Taxes') {
     const taxItems = [
       {l:'Federal', v:t.fedTax, c:'#f87171'},
@@ -464,7 +469,7 @@ after(){
         ctx.font='bold 13px sans-serif';
         ctx.textAlign='center';
         ctx.textBaseline='middle';
-        ctx.fillText(fmtK(val), cx, cy);
+        ctx.fillText(fmt(val), cx, cy);
         ctx.restore();
       });
     }
@@ -481,7 +486,7 @@ after(){
     options:{
       responsive:true, maintainAspectRatio:false,
       onClick(evt, els){ if(els.length){ const seg=wfLabels[els[0].index]; overviewDrill=(overviewDrill===seg?null:seg); setTimeout(()=>{ renderContent(); if(overviewDrill) setTimeout(()=>{ const dc=document.getElementById('drillPie'); if(dc) dc.closest('.card').scrollIntoView({behavior:'smooth',block:'nearest'}); },60); },0); } },
-      plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:c=>` ${fmtK(c.raw[1]-c.raw[0])}` } } },
+      plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:c=>` ${fmt(Math.abs(c.raw[1]-c.raw[0]))}` } } },
       scales:{
         x:{ticks:{color:'#9ca3af',font:{size:10}},grid:{color:'#2d2d4e'}},
         y:{ticks:{color:'#9ca3af',callback:v=>fmtK(v)},grid:{color:'#2d2d4e'}}
@@ -506,7 +511,7 @@ after(){
             ctx.save();
             ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.textBaseline='middle';
             ctx.font='bold 11px sans-serif'; ctx.fillText(total>0?(dd.data[i]/total*100).toFixed(0)+'%':'', x, y-7);
-            ctx.font='10px sans-serif'; ctx.fillText(fmtK(dd.data[i]), x, y+7);
+            ctx.font='10px sans-serif'; ctx.fillText(fmt(dd.data[i]), x, y+7);
             ctx.restore();
           });
         }
@@ -517,7 +522,7 @@ after(){
         data:{ labels:dd.labels, datasets:[{data:dd.data, backgroundColor:dd.colors, borderWidth:2}] },
         options:{ responsive:true, maintainAspectRatio:true,
           plugins:{ legend:{position:'bottom',labels:{font:{size:11},boxWidth:12,padding:8}},
-            tooltip:{callbacks:{label:c=>` ${c.label}: ${fmtK(c.raw)} (${total>0?(c.raw/total*100).toFixed(1):0}%)`}} } }
+            tooltip:{callbacks:{label:c=>` ${c.label}: ${fmt(c.raw)} (${total>0?(c.raw/total*100).toFixed(1):0}%)`}} } }
       });
     }
   }
