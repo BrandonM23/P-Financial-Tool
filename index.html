@@ -82,6 +82,13 @@
   .spin { display:inline-block; width:14px; height:14px; border:2px solid var(--gold); border-top-color:transparent; border-radius:50%; animation:sp 0.8s linear infinite; }
   @keyframes sp { to { transform:rotate(360deg); } }
   @media (prefers-reduced-motion:reduce){ .spin{animation:none;} }
+  /* Waterfall + inline pie layout */
+  .wf-row { display:flex; gap:16px; align-items:stretch; }
+  .wf-bar { flex:3; min-width:0; height:280px; position:relative; }
+  .wf-pie { flex:2; min-width:0; height:280px; position:relative; display:flex; flex-direction:column; gap:4px; }
+  .wf-pie-title { font-size:11px; color:var(--muted); text-align:center; margin:0; flex-shrink:0; }
+  .wf-pie canvas { flex:1; min-height:0; }
+
   @media (max-width:520px){
     .header { position:static; }
     .tab { padding:6px 9px; font-size:11px; }
@@ -96,6 +103,10 @@
     table { font-size:11px; }
     th, td { padding:5px 2px; }
     .msg { max-width:100%; }
+    /* Stack waterfall and pie vertically on mobile */
+    .wf-row { flex-direction:column; gap:12px; }
+    .wf-bar { height:220px; }
+    .wf-pie { height:260px; }
   }
 </style>
 </head>
@@ -380,34 +391,34 @@ function overviewDrillData(segment, p, t, isAnnual){
       title:'Allocation',
       labels:['Taxes','Roth 401k','Debt Pmts','Expenses','Discretionary'],
       data:[taxes, roth, debt, exp, disc].map(Math.round),
-      colors:['#f87171','#a78bfa','#fb923c','#f97316','#34d399']
+      colors:['#ef4444','#8b5cf6','#f97316','#f59e0b','#10b981']
     };
   }
   if (segment==='Taxes') {
     const taxItems = [
-      {l:'Federal', v:t.fedTax, c:'#f87171'},
-      {l:'State',   v:t.stateTax, c:'#fb923c'},
-      {l:'County',  v:t.countyTax, c:'#fbbf24'},
-      {l:'FICA',    v:t.fica, c:'#f97316'}
+      {l:'Federal', v:t.fedTax,    c:'#ef4444'},
+      {l:'State',   v:t.stateTax,  c:'#f97316'},
+      {l:'County',  v:t.countyTax, c:'#eab308'},
+      {l:'FICA',    v:t.fica,      c:'#ec4899'}
     ].filter(x=>x.v>0);
     return { labels:taxItems.map(x=>x.l), data:taxItems.map(x=>Math.round(x.v/txScale)), colors:taxItems.map(x=>x.c) };
   }
   if (segment==='Roth 401k') return {
     labels:['Brandon','Minsu'],
     data:[S.income.brandonGross*S.income.brandonRoth401kPct/100/txScale, S.income.minsuGross*S.income.minsuRoth401kPct/100/txScale].map(Math.round),
-    colors:['#a78bfa','#c4b5fd']
+    colors:['#8b5cf6','#ec4899']
   };
   if (segment==='Debt Pmts'){
     const ym = nowYM();
     const items = S.debts.map(d=>({name:d.name,val:activeDebtPayment(d,ym)*moMult})).filter(d=>d.val>0);
-    return { labels:items.map(d=>d.name), data:items.map(d=>d.val), colors:['#fb923c','#fdba74','#fde68a','#fef3c7'] };
+    return { labels:items.map(d=>d.name), data:items.map(d=>d.val), colors:['#f97316','#ef4444','#f59e0b','#10b981','#3b82f6','#a855f7'] };
   }
   if (segment==='Expenses'){
     const sorted = [...S.expenses].filter(e=>Number(e.amt)>0).sort((a,b)=>b.amt-a.amt);
     const top = sorted.slice(0,6), rest = sorted.slice(6);
     const labels = top.map(e=>e.name), data = top.map(e=>Number(e.amt)*moMult);
     if (rest.length) { labels.push('Other'); data.push(rest.reduce((s,e)=>s+Number(e.amt)*moMult,0)); }
-    return { labels, data, colors:['#6a9fb5','#e07b54','#7dc98f','#d4a843','#b07db5','#e07b7b','#5fa88f'] };
+    return { labels, data, colors:['#3b82f6','#ef4444','#22c55e','#f59e0b','#a855f7','#ec4899','#14b8a6'] };
   }
   return null;
 }
@@ -436,10 +447,10 @@ html(){
   </div>
   <div class="card">
     <h3>Cash Flow Waterfall <span class="note" style="font-size:11px;font-weight:400">· click bar to drill</span></h3>
-    <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
-      <div style="flex:2;min-width:220px;height:260px;position:relative"><canvas id="cfChart"></canvas></div>
-      <div style="flex:1;min-width:160px">
-        <p style="font-size:11px;color:var(--muted);text-align:center;margin:0 0 4px">${drillTitle}</p>
+    <div class="wf-row">
+      <div class="wf-bar"><canvas id="cfChart"></canvas></div>
+      <div class="wf-pie">
+        <p class="wf-pie-title">${drillTitle}</p>
         <canvas id="drillPie"></canvas>
       </div>
     </div>
@@ -462,11 +473,11 @@ after(){
   const wfLabels = ['Gross Income','Taxes','Roth 401k','Debt Pmts','Expenses','Discretionary'];
   const wfLo=[], wfHi=[], wfColors=[];
   wfLo.push(0); wfHi.push(gross); wfColors.push('#e8c547');
-  wfLo.push(top-taxes); wfHi.push(top); wfColors.push('#f87171'); top-=taxes;
-  wfLo.push(top-roth); wfHi.push(top); wfColors.push('#a78bfa'); top-=roth;
-  wfLo.push(top-debt); wfHi.push(top); wfColors.push('#fb923c'); top-=debt;
-  wfLo.push(top-exp); wfHi.push(top); wfColors.push('#f97316'); top-=exp;
-  wfLo.push(0); wfHi.push(disc); wfColors.push('#34d399');
+  wfLo.push(top-taxes); wfHi.push(top); wfColors.push('#ef4444'); top-=taxes;
+  wfLo.push(top-roth); wfHi.push(top); wfColors.push('#8b5cf6'); top-=roth;
+  wfLo.push(top-debt); wfHi.push(top); wfColors.push('#f97316'); top-=debt;
+  wfLo.push(top-exp); wfHi.push(top); wfColors.push('#f59e0b'); top-=exp;
+  wfLo.push(0); wfHi.push(disc); wfColors.push('#10b981');
 
   const barLabels = {
     id:'wfLabels',
@@ -531,7 +542,7 @@ after(){
       charts.drillPie = new Chart(pieCtx, {
         type:'doughnut', plugins:[segLabels],
         data:{ labels:dd.labels, datasets:[{data:dd.data, backgroundColor:dd.colors, borderWidth:2}] },
-        options:{ responsive:true, maintainAspectRatio:true,
+        options:{ responsive:true, maintainAspectRatio:false,
           plugins:{ legend:{position:'bottom',labels:{font:{size:11},boxWidth:12,padding:8}},
             tooltip:{callbacks:{label:c=>` ${c.label}: ${fmt(c.raw)} (${total>0?(c.raw/total*100).toFixed(1):0}%)`}} } }
       });
