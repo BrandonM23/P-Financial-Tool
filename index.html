@@ -380,8 +380,8 @@ let overviewDrill = null;
 function overviewDrillData(segment, p, t, isAnnual){
   const txScale = isAnnual ? 1 : 12;  // t.X is always annual; divide by txScale for display period
   const moMult  = isAnnual ? 12 : 1;  // monthly amounts; multiply by moMult for display period
-  // Default: full allocation (baseline view, also shown when Gross/Disc is clicked)
-  if (!segment || segment==='Gross Income' || segment==='Discretionary') {
+  // Default: full allocation (shown when nothing or Discretionary is selected)
+  if (!segment || segment==='Discretionary') {
     const taxes = (t.fedTax+t.stateTax+t.countyTax+t.fica) / txScale;
     const roth  = t.roth / txScale;
     const debt  = p.debtPay;
@@ -392,6 +392,14 @@ function overviewDrillData(segment, p, t, isAnnual){
       labels:['Taxes','Roth 401k','Debt Pmts','Expenses','Discretionary'],
       data:[taxes, roth, debt, exp, disc].map(Math.round),
       colors:['#ef4444','#8b5cf6','#f97316','#f59e0b','#10b981']
+    };
+  }
+  if (segment==='Gross Income') {
+    return {
+      title:'Income Sources',
+      labels:['Brandon','Minsu'],
+      data:[Math.round(S.income.brandonGross/txScale), Math.round(S.income.minsuGross/txScale)],
+      colors:['#e8c547','#f0a500']
     };
   }
   if (segment==='Taxes') {
@@ -508,7 +516,7 @@ after(){
     },
     options:{
       responsive:true, maintainAspectRatio:false,
-      onClick(evt, els){ if(els.length){ const seg=wfLabels[els[0].index]; overviewDrill=(seg==='Gross Income'||seg==='Discretionary')?null:(overviewDrill===seg?null:seg); setTimeout(renderContent,0); } },
+      onClick(evt, els){ if(els.length){ const seg=wfLabels[els[0].index]; overviewDrill=(seg==='Discretionary'||overviewDrill===seg)?null:seg; setTimeout(renderContent,0); } },
       plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:c=>` ${fmt(Math.abs(c.raw[1]-c.raw[0]))}` } } },
       scales:{
         x:{ticks:{color:'#9ca3af',font:{size:10}},grid:{color:'#2d2d4e'}},
