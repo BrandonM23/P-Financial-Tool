@@ -121,7 +121,7 @@
 /* ============ STATE ============ */
 const DEFAULTS = {
   view: 'monthly',
-  income: { brandonGross: 100000, brandonRoth401kPct: 10, minsuGross: 60000, minsuNonTaxPct: 0, minsuRoth401kPct: 6, salaryGrowthPct: 3 },
+  income: { brandonGross: 100000, brandonRoth401kPct: 10, minsuGross: 60000, minsuNonTaxPct: 0, minsuRoth401kPct: 6, salaryGrowthPct: 3, taxState: 'NC', taxCountyRate: 0 },
   expenses: [ {name:'Housing costs', amt:1500}, {name:'Utilities', amt:300}, {name:'Food & dining', amt:800}, {name:'Transportation', amt:300}, {name:'Misc', amt:400} ],
   oneOffExpenses: [],
   expenseBenchmarkPct: 50,
@@ -152,7 +152,7 @@ const store = {
 };
 async function loadState(){
   const v = await store.get('finapp-state');
-  if (v) { try { S = JSON.parse(v); if(!S.portfolio)S.portfolio=DEFAULTS.portfolio; if(!S.sim)S.sim={...DEFAULTS.sim}; if(!S.oneOffExpenses)S.oneOffExpenses=[]; if(S.expenseBenchmarkPct==null)S.expenseBenchmarkPct=50; if(!S.retire.brandonSS)S.retire.brandonSS=0; if(!S.retire.minsuSS)S.retire.minsuSS=0; if(S.retire.ssAge==null)S.retire.ssAge=67; if(S.retire.brandonSSManual==null)S.retire.brandonSSManual=false; if(S.retire.minsuSSManual==null)S.retire.minsuSSManual=false; if(S.retire.nestEggOverride==null)S.retire.nestEggOverride=false; return; } catch(e){} }
+  if (v) { try { S = JSON.parse(v); if(!S.portfolio)S.portfolio=DEFAULTS.portfolio; if(!S.sim)S.sim={...DEFAULTS.sim}; if(!S.oneOffExpenses)S.oneOffExpenses=[]; if(S.expenseBenchmarkPct==null)S.expenseBenchmarkPct=50; if(!S.retire.brandonSS)S.retire.brandonSS=0; if(!S.retire.minsuSS)S.retire.minsuSS=0; if(S.retire.ssAge==null)S.retire.ssAge=67; if(S.retire.brandonSSManual==null)S.retire.brandonSSManual=false; if(S.retire.minsuSSManual==null)S.retire.minsuSSManual=false; if(S.retire.nestEggOverride==null)S.retire.nestEggOverride=false; if(!S.income.taxState)S.income.taxState='NC'; if(S.income.taxCountyRate==null)S.income.taxCountyRate=0; return; } catch(e){} }
   S = JSON.parse(JSON.stringify(DEFAULTS));
 }
 let saveTimer = null;
@@ -166,10 +166,58 @@ function save(){
 }
 function setSub(t){ document.getElementById('hdrSub').textContent = t; }
 
-/* ============ TAX MODEL (2026, MFJ, NC) ============ */
+/* ============ TAX MODEL (2026, MFJ) ============ */
 const FED_BRACKETS = [[0,0.10],[24800,0.12],[100800,0.22],[211400,0.24],[403550,0.32],[512450,0.35],[768700,0.37]];
-const FED_STD = 32200, NC_RATE = 0.0399, NC_STD = 25500;
+const FED_STD = 32200;
 const SS_RATE = 0.062, SS_WAGE_BASE = 184500, MED_RATE = 0.0145, ADD_MED = 0.009, ADD_MED_THRESH = 250000;
+
+// State income tax table (2025 MFJ estimates). type: none|flat|progressive. std: MFJ standard deduction. rate/brackets per progressiveTax format.
+const STATE_TAXES = {
+  AK:{type:'none'}, FL:{type:'none'}, NV:{type:'none'}, SD:{type:'none'}, TN:{type:'none'}, TX:{type:'none'}, WA:{type:'none'}, WY:{type:'none'}, NH:{type:'none'},
+  AL:{type:'progressive',std:8500,brackets:[[0,0.02],[500,0.04],[3000,0.05]]},
+  AZ:{type:'flat',std:29200,rate:0.025},
+  AR:{type:'progressive',std:4400,brackets:[[0,0],[5100,0.02],[10300,0.04],[25300,0.049]]},
+  CA:{type:'progressive',std:10726,brackets:[[0,0.01],[20824,0.02],[49369,0.04],[77918,0.06],[108162,0.08],[136700,0.093],[698274,0.103],[837922,0.113],[1000000,0.123]]},
+  CO:{type:'flat',std:29200,rate:0.044},
+  CT:{type:'progressive',std:0,brackets:[[0,0.03],[20000,0.05],[100000,0.055],[200000,0.06],[400000,0.065],[500000,0.069],[1000000,0.0699]]},
+  DE:{type:'progressive',std:6500,brackets:[[0,0],[2000,0.022],[5000,0.039],[10000,0.048],[20000,0.052],[25000,0.0555],[60000,0.066]]},
+  GA:{type:'flat',std:0,rate:0.0549},
+  HI:{type:'progressive',std:8800,brackets:[[0,0.014],[4800,0.032],[9600,0.055],[19200,0.064],[28800,0.068],[38400,0.072],[48000,0.076],[72000,0.079],[96000,0.0825],[300000,0.09],[350000,0.10],[400000,0.11]]},
+  ID:{type:'flat',std:29200,rate:0.058},
+  IL:{type:'flat',std:0,rate:0.0495},
+  IN:{type:'flat',std:0,rate:0.0315},
+  IA:{type:'flat',std:29200,rate:0.057},
+  KS:{type:'progressive',std:18000,brackets:[[0,0.031],[30000,0.057]]},
+  KY:{type:'flat',std:6320,rate:0.04},
+  LA:{type:'progressive',std:18000,brackets:[[0,0.0185],[25000,0.035],[100000,0.0425]]},
+  ME:{type:'progressive',std:25900,brackets:[[0,0.058],[46000,0.0675],[109000,0.0715]]},
+  MD:{type:'progressive',std:4700,brackets:[[0,0.02],[1000,0.03],[2000,0.04],[3000,0.0475],[100000,0.05],[125000,0.0525],[150000,0.055],[250000,0.0575]]},
+  MA:{type:'flat',std:0,rate:0.05},
+  MI:{type:'flat',std:11200,rate:0.0425},
+  MN:{type:'progressive',std:27650,brackets:[[0,0.0535],[30070,0.068],[98760,0.0785],[171220,0.0985]]},
+  MS:{type:'flat',std:12000,rate:0.047},
+  MO:{type:'progressive',std:21900,brackets:[[0,0],[1000,0.015],[2000,0.02],[3000,0.025],[4000,0.03],[5000,0.035],[6000,0.04],[7000,0.045],[8000,0.05],[9000,0.054]]},
+  MT:{type:'progressive',std:23600,brackets:[[0,0.047],[20500,0.059]]},
+  NE:{type:'progressive',std:14700,brackets:[[0,0.0246],[6860,0.0351],[41190,0.0501],[66360,0.0584]]},
+  NJ:{type:'progressive',std:0,brackets:[[0,0.014],[20000,0.0175],[35000,0.035],[40000,0.05526],[75000,0.0637],[500000,0.0897],[1000000,0.1075]]},
+  NM:{type:'progressive',std:24850,brackets:[[0,0.017],[5500,0.032],[11000,0.047],[16000,0.049],[210000,0.059]]},
+  NY:{type:'progressive',std:16050,brackets:[[0,0.04],[17150,0.045],[23600,0.0525],[27900,0.059],[215400,0.0609],[1077550,0.0685],[5000000,0.0965]]},
+  NC:{type:'flat',std:25500,rate:0.0399},
+  ND:{type:'progressive',std:29200,brackets:[[0,0],[44300,0.0195],[107650,0.025],[265400,0.0289]]},
+  OH:{type:'progressive',std:0,brackets:[[0,0],[26050,0.0275],[100000,0.03335]]},
+  OK:{type:'progressive',std:12700,brackets:[[0,0.0025],[1000,0.0075],[2500,0.0175],[3750,0.0275],[4900,0.0375],[7200,0.0475]]},
+  OR:{type:'progressive',std:24650,brackets:[[0,0.0475],[18400,0.0675],[46200,0.0875],[250000,0.099]]},
+  PA:{type:'flat',std:0,rate:0.0307},
+  RI:{type:'progressive',std:10550,brackets:[[0,0.0375],[73450,0.0475],[166950,0.0599]]},
+  SC:{type:'progressive',std:14600,brackets:[[0,0],[3460,0.03],[17330,0.064]]},
+  UT:{type:'flat',std:0,rate:0.0465},
+  VT:{type:'progressive',std:14600,brackets:[[0,0.0335],[45400,0.066],[110650,0.076],[231150,0.0875]]},
+  VA:{type:'progressive',std:16000,brackets:[[0,0.02],[3000,0.03],[5000,0.05],[17000,0.0575]]},
+  WV:{type:'progressive',std:0,brackets:[[0,0.0236],[10000,0.0315],[25000,0.0315]]},
+  WI:{type:'progressive',std:23100,brackets:[[0,0.035],[13810,0.044],[27630,0.053],[304170,0.0765]]},
+  DC:{type:'progressive',std:12950,brackets:[[0,0.04],[10000,0.06],[40000,0.065],[60000,0.085],[350000,0.0875],[1000000,0.1075]]},
+};
+function getStateTaxData(code){ return STATE_TAXES[code] || STATE_TAXES['NC']; }
 
 function progressiveTax(taxable, brackets){
   if (taxable <= 0) return 0;
@@ -184,15 +232,21 @@ function progressiveTax(taxable, brackets){
 function calcHousehold(inc){
   const bG = inc.brandonGross, mG = inc.minsuGross;
   const mNonTax = mG * inc.minsuNonTaxPct/100;
-  const incomeTaxableWages = bG + (mG - mNonTax); // tips excluded from income tax, still FICA
+  const incomeTaxableWages = bG + (mG - mNonTax);
   const fedTax = progressiveTax(incomeTaxableWages - FED_STD, FED_BRACKETS);
-  const ncTax = Math.max(0, incomeTaxableWages - NC_STD) * NC_RATE;
+  // State tax — dynamic from S.income
+  const sd = getStateTaxData(inc.taxState||'NC');
+  const stateTaxable = Math.max(0, incomeTaxableWages - (sd.std||0));
+  const stateTax = sd.type==='none' ? 0
+    : sd.type==='flat' ? stateTaxable * sd.rate
+    : progressiveTax(stateTaxable, sd.brackets);
+  const countyTax = incomeTaxableWages * ((inc.taxCountyRate||0)/100);
   const fica = Math.min(bG, SS_WAGE_BASE)*SS_RATE + bG*MED_RATE
              + Math.min(mG, SS_WAGE_BASE)*SS_RATE + mG*MED_RATE
              + Math.max(0, bG+mG-ADD_MED_THRESH)*ADD_MED;
-  const roth = bG*inc.brandonRoth401kPct/100 + mG*inc.minsuRoth401kPct/100; // post-tax
-  const netAnnual = bG + mG - fedTax - ncTax - fica - roth;
-  return { gross:bG+mG, fedTax, ncTax, fica, roth, netAnnual, netMonthly:netAnnual/12, rothMonthly:roth/12 };
+  const roth = bG*inc.brandonRoth401kPct/100 + mG*inc.minsuRoth401kPct/100;
+  const netAnnual = bG + mG - fedTax - stateTax - countyTax - fica - roth;
+  return { gross:bG+mG, fedTax, stateTax, countyTax, fica, roth, netAnnual, netMonthly:netAnnual/12, rothMonthly:roth/12 };
 }
 
 /* ============ CALC HELPERS ============ */
@@ -309,49 +363,157 @@ function updateHeader(){
 }
 
 /* ============ OVERVIEW ============ */
+let overviewDrill = null;
+function overviewDrillData(segment, p, t, isAnnual){
+  const m = isAnnual ? 12 : 1;
+  if (segment==='Taxes') return {
+    labels:['Federal','State','County','FICA'],
+    data:[t.fedTax/m, t.stateTax/m, t.countyTax/m, t.fica/m].map(Math.round).filter((_,i,a)=>a[i]>0),
+    colors:['#f87171','#fb923c','#fbbf24','#f97316']
+  };
+  if (segment==='Roth 401k') return {
+    labels:['Brandon','Minsu'],
+    data:[S.income.brandonGross*S.income.brandonRoth401kPct/100/m, S.income.minsuGross*S.income.minsuRoth401kPct/100/m].map(Math.round),
+    colors:['#a78bfa','#c4b5fd']
+  };
+  if (segment==='Debt Pmts'){
+    const ym = nowYM();
+    const items = S.debts.map(d=>({name:d.name,val:activeDebtPayment(d,ym)*m})).filter(d=>d.val>0);
+    return { labels:items.map(d=>d.name), data:items.map(d=>d.val), colors:['#fb923c','#fdba74','#fde68a','#fef3c7'] };
+  }
+  if (segment==='Expenses'){
+    const sorted = [...S.expenses].filter(e=>Number(e.amt)>0).sort((a,b)=>b.amt-a.amt);
+    const top = sorted.slice(0,6), rest = sorted.slice(6);
+    const labels = top.map(e=>e.name), data = top.map(e=>Number(e.amt)*m);
+    if (rest.length) { labels.push('Other'); data.push(rest.reduce((s,e)=>s+Number(e.amt)*m,0)); }
+    return { labels, data, colors:['#6a9fb5','#e07b54','#7dc98f','#d4a843','#b07db5','#e07b7b','#5fa88f'] };
+  }
+  return null;
+}
 const vOverview = {
 html(){
   const isAnnual = S.view==='annual';
   const p = isAnnual ? annualPicture() : monthlyPicture(nowYM());
-  const t = p.tax; const mult = isAnnual?12:1;
+  const t = p.tax;
+  const assets = S.assets.reduce((a,x)=>a+Number(x.amt||0),0);
+  const debt = S.debts.reduce((a,d)=>a+Number(d.balance||0),0);
+  const nw = assets - debt;
+  const dd = overviewDrill ? overviewDrillData(overviewDrill, p, t, isAnnual) : null;
   return `
-  <div style="display:flex;justify-content:space-between;align-items:center;">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
     <div class="toggle">
       <button class="${!isAnnual?'on':''}" onclick="S.view='monthly';save();renderContent()">Monthly</button>
       <button class="${isAnnual?'on':''}" onclick="S.view='annual';save();renderContent()">Annual</button>
     </div>
   </div>
   <div class="kpi-row">
-    <div class="kpi"><div class="v ${p.savingsRate>=0.2?'pos':p.savingsRate>=0?'':'neg'}">${(p.savingsRate*100).toFixed(1)}%</div><div class="l">SAVINGS RATE (NET)</div></div>
-    <div class="kpi"><div class="v">${fmt(isAnnual?t.gross:t.gross/12)}</div><div class="l">GROSS INCOME</div></div>
-    <div class="kpi"><div class="v">${fmt(isAnnual?t.netAnnual:t.netMonthly)}</div><div class="l">NET (AFTER TAX + ROTH)</div></div>
-    <div class="kpi"><div class="v">${fmt(p.outflow)}</div><div class="l">TOTAL OUTFLOWS</div></div>
-    <div class="kpi"><div class="v ${p.surplus>=0?'pos':'neg'}">${fmt(p.surplus)}</div><div class="l">SURPLUS</div></div>
+    <div class="kpi"><div class="v ${nw>=0?'pos':'neg'}">${fmtK(nw)}</div><div class="l">NET WORTH</div></div>
+    <div class="kpi"><div class="v ${p.savingsRate>=0.2?'pos':p.savingsRate>=0?'':'neg'}">${(p.savingsRate*100).toFixed(1)}%</div><div class="l">SAVINGS RATE</div></div>
+    <div class="kpi"><div class="v ${p.surplus>=0?'pos':'neg'}">${fmt(p.surplus)}</div><div class="l">MONTHLY SURPLUS</div></div>
+    <div class="kpi"><div class="v">${((t.fedTax+t.stateTax+t.countyTax+t.fica)/t.gross*100).toFixed(1)}%</div><div class="l">EFFECTIVE TAX RATE</div></div>
   </div>
-  <div class="card"><h3>Cash Flow Waterfall</h3><div class="chart-wrap"><canvas id="cfChart"></canvas></div></div>
-  <div class="card"><h3>Tax Breakdown (annual)</h3>
-    <div class="row"><span class="nm">Federal income tax</span><span>${fmt(t.fedTax)}</span></div>
-    <div class="row"><span class="nm">NC state (3.99% flat)</span><span>${fmt(t.ncTax)}</span></div>
-    <div class="row"><span class="nm">FICA (SS + Medicare)</span><span>${fmt(t.fica)}</span></div>
-    <div class="row"><span class="nm">Roth 401k (post-tax)</span><span>${fmt(t.roth)}</span></div>
-    <div class="row"><span class="nm" style="color:var(--gold)">Effective total rate</span><span style="color:var(--gold)">${((t.fedTax+t.ncTax+t.fica)/t.gross*100).toFixed(1)}%</span></div>
-  </div>`;
+  <div class="card">
+    <h3>Cash Flow Waterfall <span class="note" style="font-size:11px;font-weight:400">· click a bar to drill down</span></h3>
+    <div class="chart-wrap"><canvas id="cfChart"></canvas></div>
+  </div>
+  ${dd ? `<div class="card" style="animation:fadeIn .2s">
+    <h3>${overviewDrill} Breakdown <button class="btn ghost sm" style="float:right" onclick="overviewDrill=null;renderContent()">✕</button></h3>
+    <div style="max-height:260px;position:relative"><canvas id="drillPie"></canvas></div>
+  </div>` : ''}`;
 },
 after(){
   const isAnnual = S.view==='annual';
   const p = isAnnual ? annualPicture() : monthlyPicture(nowYM());
   const t = p.tax;
-  const gross = isAnnual?t.gross:t.gross/12;
-  const taxes = isAnnual?(t.fedTax+t.ncTax+t.fica):(t.fedTax+t.ncTax+t.fica)/12;
-  const roth = isAnnual?t.roth:t.roth/12;
+  const m = isAnnual ? 12 : 1;
+  const gross = t.gross/m;
+  const taxes = (t.fedTax+t.stateTax+t.countyTax+t.fica)/m;
+  const roth = t.roth/m;
+  const debt = p.debtPay*m;
+  const exp = p.exp*m;
+  const disc = Math.max(0, gross - taxes - roth - debt - exp);
+
+  // Build waterfall floating bars [lo, hi]
+  let top = gross;
+  const wfLabels = ['Gross Income','Taxes','Roth 401k','Debt Pmts','Expenses','Discretionary'];
+  const wfLo=[], wfHi=[], wfColors=[];
+  wfLo.push(0); wfHi.push(gross); wfColors.push('#e8c547');
+  wfLo.push(top-taxes); wfHi.push(top); wfColors.push('#f87171'); top-=taxes;
+  wfLo.push(top-roth); wfHi.push(top); wfColors.push('#a78bfa'); top-=roth;
+  wfLo.push(top-debt); wfHi.push(top); wfColors.push('#fb923c'); top-=debt;
+  wfLo.push(top-exp); wfHi.push(top); wfColors.push('#f97316'); top-=exp;
+  wfLo.push(0); wfHi.push(disc); wfColors.push('#34d399');
+
+  const barLabels = {
+    id:'wfLabels',
+    afterDatasetsDraw(chart){
+      const { ctx } = chart;
+      chart.getDatasetMeta(0).data.forEach((bar,i)=>{
+        const val = wfHi[i]-wfLo[i];
+        if (val<=0) return;
+        const cx = bar.x, cy = (bar.y + bar.base)/2;
+        ctx.save();
+        ctx.fillStyle='#fff';
+        ctx.font='bold 10px sans-serif';
+        ctx.textAlign='center';
+        ctx.textBaseline='middle';
+        ctx.fillText(fmtK(val), cx, cy);
+        ctx.restore();
+      });
+    }
+  };
+
+  if (charts.cf) { charts.cf.destroy(); delete charts.cf; }
   charts.cf = new Chart(document.getElementById('cfChart'), {
     type:'bar',
-    data:{ labels:['Gross','Taxes','Roth 401k','Expenses','Debt pmts','Surplus'],
-      datasets:[{ data:[gross,-taxes,-roth,-p.exp,-p.debtPay,p.surplus],
-        backgroundColor:['#e8c547','#f87171','#a78bfa','#f87171','#f87171','#34d399'] }]},
-    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
-      scales:{ x:{ticks:{color:'#9ca3af',font:{size:10}},grid:{color:'#2d2d4e'}}, y:{ticks:{color:'#9ca3af',callback:v=>fmtK(v)},grid:{color:'#2d2d4e'}} } }
+    plugins:[barLabels],
+    data:{
+      labels: wfLabels,
+      datasets:[{ data: wfLo.map((lo,i)=>[lo,wfHi[i]]), backgroundColor: wfColors, borderRadius:3, borderSkipped:false }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      onClick(evt, els){ if(els.length){ const seg=wfLabels[els[0].index]; overviewDrill=(overviewDrill===seg?null:seg); renderContent(); } },
+      plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:c=>` ${fmtK(c.raw[1]-c.raw[0])}` } } },
+      scales:{
+        x:{ticks:{color:'#9ca3af',font:{size:10}},grid:{color:'#2d2d4e'}},
+        y:{ticks:{color:'#9ca3af',callback:v=>fmtK(v)},grid:{color:'#2d2d4e'}}
+      }
+    }
   });
+
+  // Drilldown pie
+  const dd = overviewDrill ? overviewDrillData(overviewDrill, p, t, isAnnual) : null;
+  if (dd) {
+    const pieCtx = document.getElementById('drillPie');
+    if (pieCtx) {
+      const total = dd.data.reduce((a,b)=>a+b,0);
+      const segLabels = {
+        id:'drillSeg',
+        afterDatasetsDraw(chart){
+          const { ctx } = chart;
+          chart.getDatasetMeta(0).data.forEach((arc,i)=>{
+            if (arc.endAngle-arc.startAngle < 0.3) return;
+            const mid=(arc.startAngle+arc.endAngle)/2, r=(arc.innerRadius+arc.outerRadius)/2;
+            const x=arc.x+Math.cos(mid)*r, y=arc.y+Math.sin(mid)*r;
+            ctx.save();
+            ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.textBaseline='middle';
+            ctx.font='bold 11px sans-serif'; ctx.fillText(total>0?(dd.data[i]/total*100).toFixed(0)+'%':'', x, y-7);
+            ctx.font='10px sans-serif'; ctx.fillText(fmtK(dd.data[i]), x, y+7);
+            ctx.restore();
+          });
+        }
+      };
+      if (charts.drillPie) { charts.drillPie.destroy(); delete charts.drillPie; }
+      charts.drillPie = new Chart(pieCtx, {
+        type:'doughnut', plugins:[segLabels],
+        data:{ labels:dd.labels, datasets:[{data:dd.data, backgroundColor:dd.colors, borderWidth:2}] },
+        options:{ responsive:true, maintainAspectRatio:true,
+          plugins:{ legend:{position:'bottom',labels:{font:{size:11},boxWidth:12,padding:8}},
+            tooltip:{callbacks:{label:c=>` ${c.label}: ${fmtK(c.raw)} (${total>0?(c.raw/total*100).toFixed(1):0}%)`}} } }
+      });
+    }
+  }
 }};
 
 /* ============ INCOME ============ */
@@ -359,7 +521,16 @@ const vIncome = {
 html(){
   const i = S.income, t = calcHousehold(i);
   const mNonTax = i.minsuGross * i.minsuNonTaxPct/100;
+  const sd = getStateTaxData(i.taxState||'NC');
+  const stateNames = {AK:'Alaska',AL:'Alabama',AR:'Arkansas',AZ:'Arizona',CA:'California',CO:'Colorado',CT:'Connecticut',DC:'Washington DC',DE:'Delaware',FL:'Florida',GA:'Georgia',HI:'Hawaii',IA:'Iowa',ID:'Idaho',IL:'Illinois',IN:'Indiana',KS:'Kansas',KY:'Kentucky',LA:'Louisiana',MA:'Massachusetts',MD:'Maryland',ME:'Maine',MI:'Michigan',MN:'Minnesota',MO:'Missouri',MS:'Mississippi',MT:'Montana',NC:'North Carolina',ND:'North Dakota',NE:'Nebraska',NH:'New Hampshire',NJ:'New Jersey',NM:'New Mexico',NV:'Nevada',NY:'New York',OH:'Ohio',OK:'Oklahoma',OR:'Oregon',PA:'Pennsylvania',RI:'Rhode Island',SC:'South Carolina',SD:'South Dakota',TN:'Tennessee',TX:'Texas',UT:'Utah',VA:'Virginia',VT:'Vermont',WA:'Washington',WI:'Wisconsin',WV:'West Virginia',WY:'Wyoming'};
+  const totalTax = t.fedTax+t.stateTax+t.countyTax+t.fica;
   return `
+  <div class="kpi-row">
+    <div class="kpi"><div class="v">${fmt(t.gross)}</div><div class="l">HOUSEHOLD GROSS</div></div>
+    <div class="kpi"><div class="v">${fmt(t.netAnnual)}</div><div class="l">NET AFTER TAX + ROTH</div></div>
+    <div class="kpi"><div class="v">${fmt(t.netMonthly)}</div><div class="l">NET PER MONTH</div></div>
+    <div class="kpi"><div class="v">${(totalTax/t.gross*100).toFixed(1)}%</div><div class="l">EFFECTIVE TAX RATE</div></div>
+  </div>
   <div class="card"><h3>Brandon</h3>
     <div class="row"><span class="nm">Gross salary (annual)</span><input type="number" value="${i.brandonGross}" onchange="S.income.brandonGross=Number(this.value);save();renderContent()"></div>
     <div class="row"><span class="nm">Roth 401k contribution %</span><input type="number" value="${i.brandonRoth401kPct}" step="0.5" onchange="S.income.brandonRoth401kPct=Number(this.value);save();renderContent()"></div>
@@ -371,14 +542,25 @@ html(){
     <div class="row"><span class="nm">Roth 401k contribution %</span><input type="number" value="${i.minsuRoth401kPct}" step="0.5" onchange="S.income.minsuRoth401kPct=Number(this.value);save();renderContent()"></div>
     <div class="note">${fmt(mNonTax)}/yr excluded from income tax (still subject to FICA).</div>
   </div>
+  <div class="card"><h3>Tax Location</h3>
+    <div class="row"><span class="nm">State</span>
+      <select onchange="S.income.taxState=this.value;save();renderContent()">
+        ${Object.keys(stateNames).sort().map(k=>`<option value="${k}" ${i.taxState===k?'selected':''}>${stateNames[k]}</option>`).join('')}
+      </select>
+    </div>
+    <div class="row"><span class="nm">County / local income tax %</span><input type="number" value="${i.taxCountyRate||0}" step="0.1" min="0" onchange="S.income.taxCountyRate=Number(this.value);save();renderContent()"></div>
+    <p class="note" style="margin-top:6px">State rates are 2025 estimates (MFJ). ${sd.type==='none'?'<strong>'+stateNames[i.taxState||'NC']+' has no state income tax.</strong>':sd.type==='flat'?'Flat rate: '+(sd.rate*100).toFixed(2)+'%.':'Progressive brackets applied.'} County/local tax is an additional flat % on top.</p>
+  </div>
+  <div class="card"><h3>Tax Breakdown (annual)</h3>
+    <div class="row"><span class="nm">Federal income tax</span><span>${fmt(t.fedTax)}</span></div>
+    <div class="row"><span class="nm">${stateNames[i.taxState||'NC']} state</span><span>${fmt(t.stateTax)}</span></div>
+    ${t.countyTax>0?`<div class="row"><span class="nm">County / local</span><span>${fmt(t.countyTax)}</span></div>`:''}
+    <div class="row"><span class="nm">FICA (SS + Medicare)</span><span>${fmt(t.fica)}</span></div>
+    <div class="row"><span class="nm">Roth 401k (post-tax)</span><span>${fmt(t.roth)}</span></div>
+    <div class="row"><span class="nm" style="color:var(--gold)">Effective total rate</span><span style="color:var(--gold)">${(totalTax/t.gross*100).toFixed(1)}%</span></div>
+  </div>
   <div class="card"><h3>Assumptions</h3>
     <div class="row"><span class="nm">Salary growth %/yr</span><input type="number" value="${i.salaryGrowthPct}" step="0.5" onchange="S.income.salaryGrowthPct=Number(this.value);save();renderContent()"></div>
-  </div>
-  <div class="kpi-row">
-    <div class="kpi"><div class="v">${fmt(t.gross)}</div><div class="l">HOUSEHOLD GROSS</div></div>
-    <div class="kpi"><div class="v">${fmt(t.netAnnual)}</div><div class="l">NET AFTER TAX + ROTH</div></div>
-    <div class="kpi"><div class="v">${fmt(t.netMonthly)}</div><div class="l">NET PER MONTH</div></div>
-    <div class="kpi"><div class="v">${((t.fedTax+t.ncTax+t.fica)/t.gross*100).toFixed(1)}%</div><div class="l">EFFECTIVE TAX RATE</div></div>
   </div>`;
 }};
 
