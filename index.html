@@ -272,7 +272,9 @@ function annualPicture(){
     debt += S.debts.reduce((a,d)=>a+activeDebtPayment(d, ym),0);
   }
   const t = calcHousehold(S.income);
-  return { tax:t, exp, debtPay:debt, outflow:exp+debt, surplus:t.netAnnual-(exp+debt) };
+  const surplus = t.netAnnual - (exp+debt);
+  const savingsRate = t.netAnnual>0 ? (surplus + t.roth) / (t.netAnnual + t.roth) : 0;
+  return { tax:t, exp, debtPay:debt, outflow:exp+debt, surplus, savingsRate };
 }
 
 /* ============ CLOUD SYNC (private GitHub repo, Contents API) ============ */
@@ -365,27 +367,32 @@ function updateHeader(){
 /* ============ OVERVIEW ============ */
 let overviewDrill = null;
 function overviewDrillData(segment, p, t, isAnnual){
-  const m = isAnnual ? 12 : 1;
-  if (segment==='Taxes') return {
-    labels:['Federal','State','County','FICA'],
-    data:[t.fedTax/m, t.stateTax/m, t.countyTax/m, t.fica/m].map(Math.round).filter((_,i,a)=>a[i]>0),
-    colors:['#f87171','#fb923c','#fbbf24','#f97316']
-  };
+  const txScale = isAnnual ? 1 : 12;  // t.X is always annual; divide by txScale for display period
+  const moMult  = isAnnual ? 12 : 1;  // monthly amounts; multiply by moMult for display period
+  if (segment==='Taxes') {
+    const taxItems = [
+      {l:'Federal', v:t.fedTax, c:'#f87171'},
+      {l:'State',   v:t.stateTax, c:'#fb923c'},
+      {l:'County',  v:t.countyTax, c:'#fbbf24'},
+      {l:'FICA',    v:t.fica, c:'#f97316'}
+    ].filter(x=>x.v>0);
+    return { labels:taxItems.map(x=>x.l), data:taxItems.map(x=>Math.round(x.v/txScale)), colors:taxItems.map(x=>x.c) };
+  }
   if (segment==='Roth 401k') return {
     labels:['Brandon','Minsu'],
-    data:[S.income.brandonGross*S.income.brandonRoth401kPct/100/m, S.income.minsuGross*S.income.minsuRoth401kPct/100/m].map(Math.round),
+    data:[S.income.brandonGross*S.income.brandonRoth401kPct/100/txScale, S.income.minsuGross*S.income.minsuRoth401kPct/100/txScale].map(Math.round),
     colors:['#a78bfa','#c4b5fd']
   };
   if (segment==='Debt Pmts'){
     const ym = nowYM();
-    const items = S.debts.map(d=>({name:d.name,val:activeDebtPayment(d,ym)*m})).filter(d=>d.val>0);
+    const items = S.debts.map(d=>({name:d.name,val:activeDebtPayment(d,ym)*moMult})).filter(d=>d.val>0);
     return { labels:items.map(d=>d.name), data:items.map(d=>d.val), colors:['#fb923c','#fdba74','#fde68a','#fef3c7'] };
   }
   if (segment==='Expenses'){
     const sorted = [...S.expenses].filter(e=>Number(e.amt)>0).sort((a,b)=>b.amt-a.amt);
     const top = sorted.slice(0,6), rest = sorted.slice(6);
-    const labels = top.map(e=>e.name), data = top.map(e=>Number(e.amt)*m);
-    if (rest.length) { labels.push('Other'); data.push(rest.reduce((s,e)=>s+Number(e.amt)*m,0)); }
+    const labels = top.map(e=>e.name), data = top.map(e=>Number(e.amt)*moMult);
+    if (rest.length) { labels.push('Other'); data.push(rest.reduce((s,e)=>s+Number(e.amt)*moMult,0)); }
     return { labels, data, colors:['#6a9fb5','#e07b54','#7dc98f','#d4a843','#b07db5','#e07b7b','#5fa88f'] };
   }
   return null;
@@ -409,7 +416,7 @@ html(){
   <div class="kpi-row">
     <div class="kpi"><div class="v ${nw>=0?'pos':'neg'}">${fmtK(nw)}</div><div class="l">NET WORTH</div></div>
     <div class="kpi"><div class="v ${p.savingsRate>=0.2?'pos':p.savingsRate>=0?'':'neg'}">${(p.savingsRate*100).toFixed(1)}%</div><div class="l">SAVINGS RATE</div></div>
-    <div class="kpi"><div class="v ${p.surplus>=0?'pos':'neg'}">${fmt(p.surplus)}</div><div class="l">MONTHLY SURPLUS</div></div>
+    <div class="kpi"><div class="v ${p.surplus>=0?'pos':'neg'}">${fmt(p.surplus)}</div><div class="l">${isAnnual?'ANNUAL':'MONTHLY'} SURPLUS</div></div>
     <div class="kpi"><div class="v">${((t.fedTax+t.stateTax+t.countyTax+t.fica)/t.gross*100).toFixed(1)}%</div><div class="l">EFFECTIVE TAX RATE</div></div>
   </div>
   <div class="card">
@@ -425,12 +432,12 @@ after(){
   const isAnnual = S.view==='annual';
   const p = isAnnual ? annualPicture() : monthlyPicture(nowYM());
   const t = p.tax;
-  const m = isAnnual ? 12 : 1;
-  const gross = t.gross/m;
-  const taxes = (t.fedTax+t.stateTax+t.countyTax+t.fica)/m;
-  const roth = t.roth/m;
-  const debt = p.debtPay*m;
-  const exp = p.exp*m;
+  const txScale = isAnnual ? 1 : 12;  // t.X is always annual
+  const gross = t.gross / txScale;
+  const taxes = (t.fedTax+t.stateTax+t.countyTax+t.fica) / txScale;
+  const roth = t.roth / txScale;
+  const debt = p.debtPay;  // already in display-period units from monthlyPicture/annualPicture
+  const exp = p.exp;
   const disc = Math.max(0, gross - taxes - roth - debt - exp);
 
   // Build waterfall floating bars [lo, hi]
@@ -454,7 +461,7 @@ after(){
         const cx = bar.x, cy = (bar.y + bar.base)/2;
         ctx.save();
         ctx.fillStyle='#fff';
-        ctx.font='bold 10px sans-serif';
+        ctx.font='bold 13px sans-serif';
         ctx.textAlign='center';
         ctx.textBaseline='middle';
         ctx.fillText(fmtK(val), cx, cy);
@@ -473,7 +480,7 @@ after(){
     },
     options:{
       responsive:true, maintainAspectRatio:false,
-      onClick(evt, els){ if(els.length){ const seg=wfLabels[els[0].index]; overviewDrill=(overviewDrill===seg?null:seg); renderContent(); } },
+      onClick(evt, els){ if(els.length){ const seg=wfLabels[els[0].index]; overviewDrill=(overviewDrill===seg?null:seg); setTimeout(()=>{ renderContent(); if(overviewDrill) setTimeout(()=>{ const dc=document.getElementById('drillPie'); if(dc) dc.closest('.card').scrollIntoView({behavior:'smooth',block:'nearest'}); },60); },0); } },
       plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:c=>` ${fmtK(c.raw[1]-c.raw[0])}` } } },
       scales:{
         x:{ticks:{color:'#9ca3af',font:{size:10}},grid:{color:'#2d2d4e'}},
