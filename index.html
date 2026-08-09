@@ -132,7 +132,7 @@
 /* ============ STATE ============ */
 const DEFAULTS = {
   view: 'monthly',
-  income: { brandonGross: 100000, brandonRoth401kPct: 10, brandonTrad401kPct: 0, minsuGross: 60000, minsuNonTaxPct: 0, minsuRoth401kPct: 6, minsuTrad401kPct: 0, salaryGrowthPct: 3, taxState: 'NC', taxCountyRate: 0 },
+  income: { brandonGross: 100000, brandonRoth401kPct: 10, brandonTrad401kPct: 0, brandonSalaryGrowthPct: 3, minsuGross: 60000, minsuNonTaxPct: 0, minsuRoth401kPct: 6, minsuTrad401kPct: 0, minsuSalaryGrowthPct: 3, salaryGrowthPct: 3, taxState: 'NC', taxCountyName: 'Wake County', taxCountyRate: 0, additionalWithheld: 0 },
   expenses: [ {name:'Housing costs', amt:1500}, {name:'Utilities', amt:300}, {name:'Food & dining', amt:800}, {name:'Transportation', amt:300}, {name:'Misc', amt:400} ],
   oneOffExpenses: [],
   expenseBenchmarkPct: 50,
@@ -163,7 +163,7 @@ const store = {
 };
 async function loadState(){
   const v = await store.get('finapp-state');
-  if (v) { try { S = JSON.parse(v); if(!S.portfolio)S.portfolio=DEFAULTS.portfolio; if(!S.sim)S.sim={...DEFAULTS.sim}; if(!S.oneOffExpenses)S.oneOffExpenses=[]; if(S.expenseBenchmarkPct==null)S.expenseBenchmarkPct=50; if(!S.retire.brandonSS)S.retire.brandonSS=0; if(!S.retire.minsuSS)S.retire.minsuSS=0; if(S.retire.ssAge==null)S.retire.ssAge=67; if(S.retire.brandonSSManual==null)S.retire.brandonSSManual=false; if(S.retire.minsuSSManual==null)S.retire.minsuSSManual=false; if(S.retire.nestEggOverride==null)S.retire.nestEggOverride=false; if(!S.income.taxState)S.income.taxState='NC'; if(S.income.taxCountyRate==null)S.income.taxCountyRate=0; if(S.income.brandonTrad401kPct==null)S.income.brandonTrad401kPct=0; if(S.income.minsuTrad401kPct==null)S.income.minsuTrad401kPct=0; return; } catch(e){} }
+  if (v) { try { S = JSON.parse(v); if(!S.portfolio)S.portfolio=DEFAULTS.portfolio; if(!S.sim)S.sim={...DEFAULTS.sim}; if(!S.oneOffExpenses)S.oneOffExpenses=[]; if(S.expenseBenchmarkPct==null)S.expenseBenchmarkPct=50; if(!S.retire.brandonSS)S.retire.brandonSS=0; if(!S.retire.minsuSS)S.retire.minsuSS=0; if(S.retire.ssAge==null)S.retire.ssAge=67; if(S.retire.brandonSSManual==null)S.retire.brandonSSManual=false; if(S.retire.minsuSSManual==null)S.retire.minsuSSManual=false; if(S.retire.nestEggOverride==null)S.retire.nestEggOverride=false; if(!S.income.taxState)S.income.taxState='NC'; if(S.income.taxCountyRate==null)S.income.taxCountyRate=0; if(S.income.brandonTrad401kPct==null)S.income.brandonTrad401kPct=0; if(S.income.minsuTrad401kPct==null)S.income.minsuTrad401kPct=0; if(S.income.taxCountyName==null)S.income.taxCountyName=''; if(S.income.additionalWithheld==null)S.income.additionalWithheld=0; if(S.income.brandonSalaryGrowthPct==null)S.income.brandonSalaryGrowthPct=S.income.salaryGrowthPct||3; if(S.income.minsuSalaryGrowthPct==null)S.income.minsuSalaryGrowthPct=S.income.salaryGrowthPct||3; return; } catch(e){} }
   S = JSON.parse(JSON.stringify(DEFAULTS));
 }
 let saveTimer = null;
@@ -230,6 +230,22 @@ const STATE_TAXES = {
 };
 function getStateTaxData(code){ return STATE_TAXES[code] || STATE_TAXES['NC']; }
 
+const COUNTY_INCOME_RATES = {
+  MD:{ _default:0.030,'Allegany':0.0305,'Anne Arundel':0.0281,'Baltimore City':0.032,'Baltimore County':0.0283,'Calvert':0.030,'Carroll':0.0305,'Cecil':0.028,'Charles':0.0303,'Frederick':0.0296,'Garrett':0.0265,'Harford':0.0306,'Howard':0.032,'Montgomery':0.032,"Prince George's":0.032,'Washington':0.028,'Wicomico':0.032,'Worcester':0.0125 },
+  IN:{ _default:0.015,'Allen':0.0148,'Bartholomew':0.0175,'Delaware':0.015,'Hamilton':0.010,'Hendricks':0.010,'Johnson':0.010,'Lake':0.015,'Madison':0.0175,'Marion':0.0202,'Monroe':0.01345,'Saint Joseph':0.0175,'St. Joseph':0.0175,'Tippecanoe':0.0109,'Vanderburgh':0.012,'Vigo':0.016 },
+  KY:{ _default:0.015,'Jefferson':0.0228,'Louisville':0.0228,'Fayette':0.0225,'Lexington':0.0225,'Boone':0.008,'Campbell':0.010,'Kenton':0.010,'Daviess':0.015,'Warren':0.0135 },
+};
+function getCountyRate(state, county){
+  const st = COUNTY_INCOME_RATES[state];
+  if (!st) return 0;
+  const c = (county||'').trim();
+  if (!c) return st._default||0;
+  const key = Object.keys(st).find(k => k!=='_default' && k.toLowerCase()===c.toLowerCase());
+  if (key) return st[key];
+  const part = Object.keys(st).find(k => k!=='_default' && c.toLowerCase().includes(k.toLowerCase()));
+  return part ? st[part] : (st._default||0);
+}
+
 function progressiveTax(taxable, brackets){
   if (taxable <= 0) return 0;
   let tax = 0;
@@ -253,7 +269,7 @@ function calcHousehold(inc){
   const stateTax = sd.type==='none' ? 0
     : sd.type==='flat' ? stateTaxable * sd.rate
     : progressiveTax(stateTaxable, sd.brackets);
-  const countyTax = incomeTaxableWages * ((inc.taxCountyRate||0)/100);
+  const countyTax = incomeTaxableWages * getCountyRate(inc.taxState||'NC', inc.taxCountyName||'');
   const fica = Math.min(bG, SS_WAGE_BASE)*SS_RATE + bG*MED_RATE
              + Math.min(mG, SS_WAGE_BASE)*SS_RATE + mG*MED_RATE
              + Math.max(0, bG+mG-ADD_MED_THRESH)*ADD_MED;
@@ -598,6 +614,7 @@ html(){
     <div class="row"><span class="nm">Gross salary (annual)</span><input type="number" value="${i.brandonGross}" onchange="S.income.brandonGross=Number(this.value);save();renderContent()"></div>
     <div class="row"><span class="nm">Traditional 401k %</span><input type="number" value="${i.brandonTrad401kPct||0}" step="0.5" onchange="S.income.brandonTrad401kPct=Number(this.value);save();renderContent()"></div>
     <div class="row"><span class="nm">Roth 401k %</span><input type="number" value="${i.brandonRoth401kPct}" step="0.5" onchange="S.income.brandonRoth401kPct=Number(this.value);save();renderContent()"></div>
+    <div class="row"><span class="nm">Salary growth %/yr</span><input type="number" value="${i.brandonSalaryGrowthPct||3}" step="0.5" onchange="S.income.brandonSalaryGrowthPct=Number(this.value);save();renderContent()"></div>
     <div class="note">Trad 401k reduces taxable income. Roth is post-tax. Total 401k: ${fmt(i.brandonGross*(i.brandonTrad401kPct||0)/100 + i.brandonGross*i.brandonRoth401kPct/100)}/yr.</div>
   </div>
   <div class="card"><h3>Minsu</h3>
@@ -605,6 +622,7 @@ html(){
     <div class="row"><span class="nm">Tips / non-taxable %</span><input type="number" value="${i.minsuNonTaxPct}" step="1" onchange="S.income.minsuNonTaxPct=Number(this.value);save();renderContent()"></div>
     <div class="row"><span class="nm">Traditional 401k %</span><input type="number" value="${i.minsuTrad401kPct||0}" step="0.5" onchange="S.income.minsuTrad401kPct=Number(this.value);save();renderContent()"></div>
     <div class="row"><span class="nm">Roth 401k %</span><input type="number" value="${i.minsuRoth401kPct}" step="0.5" onchange="S.income.minsuRoth401kPct=Number(this.value);save();renderContent()"></div>
+    <div class="row"><span class="nm">Salary growth %/yr</span><input type="number" value="${i.minsuSalaryGrowthPct||3}" step="0.5" onchange="S.income.minsuSalaryGrowthPct=Number(this.value);save();renderContent()"></div>
     <div class="note">${fmt(mNonTax)}/yr excluded from income tax (still subject to FICA).</div>
   </div>
   <div class="card"><h3>Tax Location</h3>
@@ -613,21 +631,16 @@ html(){
         ${Object.keys(stateNames).sort().map(k=>`<option value="${k}" ${i.taxState===k?'selected':''}>${stateNames[k]}</option>`).join('')}
       </select>
     </div>
-    <div class="row"><span class="nm">County / local income tax %</span><input type="number" value="${i.taxCountyRate||0}" step="0.1" min="0" onchange="S.income.taxCountyRate=Number(this.value);save();renderContent()"></div>
-    <p class="note" style="margin-top:6px">State rates are 2025 estimates (MFJ). ${sd.type==='none'?'<strong>'+stateNames[i.taxState||'NC']+' has no state income tax.</strong>':sd.type==='flat'?'Flat rate: '+(sd.rate*100).toFixed(2)+'%.':'Progressive brackets applied.'} County/local tax is an additional flat % on top.</p>
+    <div class="row"><span class="nm">County</span><input type="text" value="${i.taxCountyName||''}" placeholder="e.g. Wake County" style="text-align:left" onchange="S.income.taxCountyName=this.value.trim();save();renderContent()"></div>
+    <p class="note" style="margin-top:6px">State rates are 2026 MFJ estimates. ${sd.type==='none'?'<strong>'+stateNames[i.taxState||'NC']+' has no state income tax.</strong>':sd.type==='flat'?'Flat rate: '+(sd.rate*100).toFixed(2)+'%.':'Progressive brackets applied.'} County income tax auto-looked up by name (see breakdown).</p>
   </div>
   <div class="card"><h3>Tax Breakdown (annual)</h3>
     <div class="row"><span class="nm">Federal income tax</span><span>${fmt(t.fedTax)}</span></div>
-    <div class="row"><span class="nm">${stateNames[i.taxState||'NC']} state</span><span>${fmt(t.stateTax)}</span></div>
-    ${t.countyTax>0?`<div class="row"><span class="nm">County / local</span><span>${fmt(t.countyTax)}</span></div>`:''}
+    <div class="row"><span class="nm">${stateNames[i.taxState||'NC']} state tax</span><span>${fmt(t.stateTax)}</span></div>
+    <div class="row"><span class="nm">${i.taxCountyName||'County'} tax</span><span>${fmt(t.countyTax)}</span></div>
     <div class="row"><span class="nm">FICA (SS + Medicare)</span><span>${fmt(t.fica)}</span></div>
-    <div class="row"><span class="nm">Traditional 401k (pre-tax)</span><span>${fmt(t.trad)}</span></div>
-    <div class="row"><span class="nm">Roth 401k (post-tax)</span><span>${fmt(t.roth)}</span></div>
-    <div class="row"><span class="nm" style="color:var(--gold)">Effective tax rate</span><span style="color:var(--gold)">${(totalTax/t.gross*100).toFixed(1)}%</span></div>
-    <div class="row"><span class="nm" style="color:var(--gold)">Total withheld from pay</span><span style="color:var(--gold)">${fmt(totalTax+t.trad+t.roth)}/yr · ${fmt((totalTax+t.trad+t.roth)/12)}/mo</span></div>
-  </div>
-  <div class="card"><h3>Assumptions</h3>
-    <div class="row"><span class="nm">Salary growth %/yr</span><input type="number" value="${i.salaryGrowthPct}" step="0.5" onchange="S.income.salaryGrowthPct=Number(this.value);save();renderContent()"></div>
+    <div class="row"><span class="nm">Additional withheld</span><input type="number" value="${i.additionalWithheld||0}" min="0" step="100" onchange="S.income.additionalWithheld=Number(this.value);save();renderContent()"></div>
+    <div class="row" style="margin-top:8px"><span class="nm" style="color:var(--gold)">Effective tax rate</span><span style="color:var(--gold)">${(totalTax/t.gross*100).toFixed(1)}%</span></div>
   </div>`;
 }};
 
@@ -1212,9 +1225,10 @@ after(){
   const now = new Date(); const labels=[], incData=[], outData=[], surData=[];
   for (let y=0;y<10;y++){
     const yr = now.getFullYear()+y;
-    const g = Math.pow(1+S.income.salaryGrowthPct/100, y);
+    const bg = Math.pow(1+(S.income.brandonSalaryGrowthPct||S.income.salaryGrowthPct||3)/100, y);
+    const mg = Math.pow(1+(S.income.minsuSalaryGrowthPct||S.income.salaryGrowthPct||3)/100, y);
     const infl = Math.pow(1+S.retire.inflationPct/100, y);
-    const inc = calcHousehold({...S.income, brandonGross:S.income.brandonGross*g, minsuGross:S.income.minsuGross*g});
+    const inc = calcHousehold({...S.income, brandonGross:S.income.brandonGross*bg, minsuGross:S.income.minsuGross*mg});
     let out = S.expenses.reduce((a,e)=>a+Number(e.amt||0),0)*12*infl;
     for (let m=0;m<12;m++){
       const ym = `${yr}-${String(m+1).padStart(2,'0')}`;
