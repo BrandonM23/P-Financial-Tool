@@ -136,7 +136,7 @@ const DEFAULTS = {
   expenses: [ {name:'Housing costs', amt:1500}, {name:'Utilities', amt:300}, {name:'Food & dining', amt:800}, {name:'Transportation', amt:300}, {name:'Misc', amt:400} ],
   oneOffExpenses: [],
   expenseBenchmarkPct: 50,
-  debts: [ {name:'Mortgage', balance:250000, payment:1500, end:'2054-01', rate:6.5} ],
+  debts: [ {name:'Mortgage', balance:250000, payment:0, end:'2054-01', rate:6.5, isMortgage:true, mortgagePrincipal:400, mortgageInterest:900, mortgageEscrow:300, mortgageExtra:0} ],
   assets: [ {name:'Home value', amt:300000}, {name:'Retirement accounts', amt:100000}, {name:'Cash', amt:20000} ],
   retire: { monthlySpend:6000, withdrawalPct:4, returnPct:7, inflationPct:2.5, currentAge:35, currentNestEgg:100000, nestEggOverride:false, brandonSS:0, minsuSS:0, ssAge:67, brandonSSManual:false, minsuSSManual:false },
   goals: [ {name:'Emergency fund', target:30000, saved:10000, monthly:500} ],
@@ -163,7 +163,7 @@ const store = {
 };
 async function loadState(){
   const v = await store.get('finapp-state');
-  if (v) { try { S = JSON.parse(v); if(!S.portfolio)S.portfolio=DEFAULTS.portfolio; if(!S.sim)S.sim={...DEFAULTS.sim}; if(!S.oneOffExpenses)S.oneOffExpenses=[]; if(S.expenseBenchmarkPct==null)S.expenseBenchmarkPct=50; if(!S.retire.brandonSS)S.retire.brandonSS=0; if(!S.retire.minsuSS)S.retire.minsuSS=0; if(S.retire.ssAge==null)S.retire.ssAge=67; if(S.retire.brandonSSManual==null)S.retire.brandonSSManual=false; if(S.retire.minsuSSManual==null)S.retire.minsuSSManual=false; if(S.retire.nestEggOverride==null)S.retire.nestEggOverride=false; if(!S.income.taxState)S.income.taxState='NC'; if(S.income.taxCountyRate==null)S.income.taxCountyRate=0; if(S.income.brandonTrad401kPct==null)S.income.brandonTrad401kPct=0; if(S.income.minsuTrad401kPct==null)S.income.minsuTrad401kPct=0; if(S.income.taxCountyName==null)S.income.taxCountyName=''; if(S.income.additionalWithheld==null)S.income.additionalWithheld=0; if(S.income.brandonSalaryGrowthPct==null)S.income.brandonSalaryGrowthPct=S.income.salaryGrowthPct||3; if(S.income.minsuSalaryGrowthPct==null)S.income.minsuSalaryGrowthPct=S.income.salaryGrowthPct||3; S.debts.forEach(d=>{if(d.rate==null)d.rate=0;}); return; } catch(e){} }
+  if (v) { try { S = JSON.parse(v); if(!S.portfolio)S.portfolio=DEFAULTS.portfolio; if(!S.sim)S.sim={...DEFAULTS.sim}; if(!S.oneOffExpenses)S.oneOffExpenses=[]; if(S.expenseBenchmarkPct==null)S.expenseBenchmarkPct=50; if(!S.retire.brandonSS)S.retire.brandonSS=0; if(!S.retire.minsuSS)S.retire.minsuSS=0; if(S.retire.ssAge==null)S.retire.ssAge=67; if(S.retire.brandonSSManual==null)S.retire.brandonSSManual=false; if(S.retire.minsuSSManual==null)S.retire.minsuSSManual=false; if(S.retire.nestEggOverride==null)S.retire.nestEggOverride=false; if(!S.income.taxState)S.income.taxState='NC'; if(S.income.taxCountyRate==null)S.income.taxCountyRate=0; if(S.income.brandonTrad401kPct==null)S.income.brandonTrad401kPct=0; if(S.income.minsuTrad401kPct==null)S.income.minsuTrad401kPct=0; if(S.income.taxCountyName==null)S.income.taxCountyName=''; if(S.income.additionalWithheld==null)S.income.additionalWithheld=0; if(S.income.brandonSalaryGrowthPct==null)S.income.brandonSalaryGrowthPct=S.income.salaryGrowthPct||3; if(S.income.minsuSalaryGrowthPct==null)S.income.minsuSalaryGrowthPct=S.income.salaryGrowthPct||3; S.debts.forEach(d=>{if(d.rate==null)d.rate=0; if(d.isMortgage==null)d.isMortgage=false; if(d.mortgagePrincipal==null)d.mortgagePrincipal=0; if(d.mortgageInterest==null)d.mortgageInterest=0; if(d.mortgageEscrow==null)d.mortgageEscrow=0; if(d.mortgageExtra==null)d.mortgageExtra=0;}); return; } catch(e){} }
   S = JSON.parse(JSON.stringify(DEFAULTS));
 }
 let saveTimer = null;
@@ -285,7 +285,13 @@ function calcHousehold(inc){
 const fmt = n => '$' + (Math.round(n)||0).toLocaleString();
 const fmtK = n => Math.abs(n)>=1e6 ? '$'+(n/1e6).toFixed(2)+'M' : '$'+Math.round(n/1000)+'k';
 function monthKey(d){ return d.toISOString().slice(0,7); }
-function activeDebtPayment(debt, ym){ return (!debt.end || ym <= debt.end) ? debt.payment : 0; }
+function mortgagePI(d){ return (d.mortgagePrincipal||0)+(d.mortgageInterest||0)+(d.mortgageExtra||0); }
+function activeDebtPayment(debt, ym){
+  if (debt.end && ym > debt.end) return 0;
+  return debt.isMortgage
+    ? (debt.mortgagePrincipal||0)+(debt.mortgageInterest||0)+(debt.mortgageEscrow||0)+(debt.mortgageExtra||0)
+    : Number(debt.payment||0);
+}
 function nowYM(){ return monthKey(new Date()); }
 
 function monthlyPicture(ym){
@@ -853,9 +859,10 @@ html(){
   // lifetime cost per active debt
   const active = S.debts.filter(d=>!d.end||d.end>=ym);
   const debtRows = active.map((d,i)=>{
-    const bal = Number(d.balance||0), pmt = Number(d.payment||0), rate = Number(d.rate||0);
+    const bal = Number(d.balance||0), rate = Number(d.rate||0);
+    const pmt = d.isMortgage ? mortgagePI(d) : Number(d.payment||0);
     const color = DEBT_COLORS[i % DEBT_COLORS.length];
-    if (!d.end) return {name:d.name, bal, interest:0, total:bal, hasEnd:false, color, rate};
+    if (!d.end) return {name:d.name, bal, interest:0, total:bal, hasEnd:false, color, rate, isMortgage:d.isMortgage};
     const [ey,em]=d.end.split('-').map(Number), [ny,nm]=ym.split('-').map(Number);
     const months = Math.max(0,(ey-ny)*12+(em-nm));
     let interest;
@@ -871,7 +878,7 @@ html(){
     } else {
       interest = Math.max(0, pmt * months - bal);
     }
-    return {name:d.name, bal, interest, total:bal+interest, months, hasEnd:true, color, rate};
+    return {name:d.name, bal, interest, total:bal+interest, months, hasEnd:true, color, rate, isMortgage:d.isMortgage};
   });
   const totInterest = debtRows.reduce((a,r)=>a+r.interest,0);
   const totLifetime = debtRows.reduce((a,r)=>a+r.total,0);
@@ -914,13 +921,21 @@ html(){
         <input type="text" value="${d.name.replace(/"/g,'&quot;')}" style="width:45%" onchange="S.debts[${i}].name=this.value;save()">
         <button class="btn danger sm" onclick="S.debts.splice(${i},1);save();renderContent()">✕</button>
       </div>
+      <div class="row" style="border:none;padding:3px 0"><span class="nm">Mortgage</span><input type="checkbox" ${d.isMortgage?'checked':''} style="width:auto;margin-left:auto" onchange="S.debts[${i}].isMortgage=this.checked;save();renderContent()"></div>
       <div class="row" style="border:none;padding:3px 0"><span class="nm">Balance</span><input type="number" value="${d.balance}" onchange="S.debts[${i}].balance=Number(this.value);save();renderContent()"></div>
       <div class="row" style="border:none;padding:3px 0"><span class="nm">Interest rate (%)</span><input type="number" value="${d.rate||0}" min="0" max="30" step="0.1" onchange="S.debts[${i}].rate=Number(this.value);save();renderContent()"></div>
-      <div class="row" style="border:none;padding:3px 0"><span class="nm">Monthly payment</span><input type="number" value="${d.payment}" onchange="S.debts[${i}].payment=Number(this.value);save();renderContent()"></div>
+      ${d.isMortgage ? `
+      <div class="row" style="border:none;padding:3px 0"><span class="nm">Current principal</span><input type="number" value="${d.mortgagePrincipal||0}" onchange="S.debts[${i}].mortgagePrincipal=Number(this.value);save();renderContent()"></div>
+      <div class="row" style="border:none;padding:3px 0"><span class="nm">Current interest</span><input type="number" value="${d.mortgageInterest||0}" onchange="S.debts[${i}].mortgageInterest=Number(this.value);save();renderContent()"></div>
+      <div class="row" style="border:none;padding:3px 0"><span class="nm">Current escrow</span><input type="number" value="${d.mortgageEscrow||0}" onchange="S.debts[${i}].mortgageEscrow=Number(this.value);save();renderContent()"></div>
+      <div class="row" style="border:none;padding:3px 0"><span class="nm">Additional payment</span><input type="number" value="${d.mortgageExtra||0}" onchange="S.debts[${i}].mortgageExtra=Number(this.value);save();renderContent()"></div>
+      ` : `
+      <div class="row" style="border:none;padding:3px 0"><span class="nm">Monthly payment</span><input type="number" value="${d.payment||0}" onchange="S.debts[${i}].payment=Number(this.value);save();renderContent()"></div>
+      `}
       <div class="row" style="border:none;padding:3px 0"><span class="nm">End date ${d.end && d.end < ym ? '<span class="pos">(ended — excluded)</span>':''}</span><input type="month" value="${d.end||''}" onchange="S.debts[${i}].end=this.value;save();renderContent()"></div>
     </div>`).join('')}
-  <div style="margin-top:10px"><button class="btn ghost sm" onclick="S.debts.push({name:'New debt',balance:0,rate:0,payment:0,end:''});save();renderContent()">+ Add debt</button></div>
-  <p class="note" style="margin-top:8px">Payments drop off automatically after their end date. Set accurate end dates to get correct interest estimates above.</p>
+  <div style="margin-top:10px"><button class="btn ghost sm" onclick="S.debts.push({name:'New debt',balance:0,rate:0,payment:0,end:'',isMortgage:false,mortgagePrincipal:0,mortgageInterest:0,mortgageEscrow:0,mortgageExtra:0});save();renderContent()">+ Add debt</button></div>
+  <p class="note" style="margin-top:8px">Mortgage: enter the P/I/escrow split from your statement. Interest calc uses P+I only — escrow is excluded. All payments drop off after their end date.</p>
   </div>`;
 },
 after(){
@@ -928,7 +943,8 @@ after(){
   const active = S.debts.filter(d=>!d.end||d.end>=ym);
 
   const slices = active.map((d,idx)=>{
-    const bal = Number(d.balance||0), pmt = Number(d.payment||0), rate = Number(d.rate||0);
+    const bal = Number(d.balance||0), rate = Number(d.rate||0);
+    const pmt = d.isMortgage ? mortgagePI(d) : Number(d.payment||0);
     let total = bal;
     if (d.end) {
       const [ey,em]=d.end.split('-').map(Number), [ny,nm]=ym.split('-').map(Number);
