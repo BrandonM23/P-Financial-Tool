@@ -367,12 +367,12 @@ let activeSub = {};   // group name -> selected view
 GROUPS.forEach(g=>{ activeSub[g.name] = g.views[0]; });
 function currentGroup(){ return GROUPS.find(g=>g.name===activeTab) || GROUPS[0]; }
 function currentView(){ return activeSub[activeTab] || currentGroup().views[0]; }
-function switchSub(v){ activeSub[activeTab] = v; renderContent(); }
+function switchSub(v){ activeSub[activeTab] = v; location.hash = encodeURIComponent(activeTab) + '/' + encodeURIComponent(v); renderContent(); }
 function renderTabs(){
   document.getElementById('tabs').innerHTML = TABS.map(t=>
     `<button class="tab ${t===activeTab?'active':''}" onclick="switchTab('${t}')">${t}</button>`).join('');
 }
-function switchTab(t){ activeTab = t; renderTabs(); renderContent(); }
+function switchTab(t){ activeTab = t; location.hash = encodeURIComponent(t) + '/' + encodeURIComponent(activeSub[t]||currentGroup().views[0]); renderTabs(); renderContent(); }
 
 function destroyCharts(){ Object.values(charts).forEach(c=>c.destroy()); charts={}; }
 
@@ -1458,6 +1458,12 @@ after(){ renderChat(false); }};
   apiKey = (await store.get('finapp-apikey')) || '';
   await loadSync();
   if (syncCfg.autoPull && syncCfg.token && syncCfg.repo) await repoPull();
+  const hashParts = location.hash.replace('#','').split('/').map(decodeURIComponent);
+  if (hashParts[0] && GROUPS.find(g=>g.name===hashParts[0])) {
+    activeTab = hashParts[0];
+    const g = GROUPS.find(g=>g.name===activeTab);
+    if (hashParts[1] && g.views.includes(hashParts[1])) activeSub[activeTab] = hashParts[1];
+  }
   renderTabs();
   renderContent();
   setSub('State persists across sessions · ' + nowYM());
