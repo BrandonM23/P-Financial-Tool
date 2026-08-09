@@ -258,10 +258,10 @@ function progressiveTax(taxable, brackets){
 }
 function calcHousehold(inc){
   const bG = inc.brandonGross, mG = inc.minsuGross;
-  const mNonTax  = mG * inc.minsuNonTaxPct/100;
-  const bTrad    = bG * (inc.brandonTrad401kPct||0)/100;
-  const mTrad    = mG * (inc.minsuTrad401kPct||0)/100;
-  const incomeTaxableWages = bG + (mG - mNonTax) - bTrad - mTrad;
+  const mNonTax  = mG * Math.min(100, Math.max(0, inc.minsuNonTaxPct||0))/100;
+  const bTrad    = bG * Math.min(100, Math.max(0, inc.brandonTrad401kPct||0))/100;
+  const mTrad    = mG * Math.min(100, Math.max(0, inc.minsuTrad401kPct||0))/100;
+  const incomeTaxableWages = Math.max(0, bG + (mG - mNonTax) - bTrad - mTrad);
   const fedTax = progressiveTax(incomeTaxableWages - FED_STD, FED_BRACKETS);
   // State tax — dynamic from S.income
   const sd = getStateTaxData(inc.taxState||'NC');
@@ -276,11 +276,11 @@ function calcHousehold(inc){
   const roth = bG*inc.brandonRoth401kPct/100 + mG*inc.minsuRoth401kPct/100;
   const trad = bTrad + mTrad;
   const netAnnual = bG + mG - fedTax - stateTax - countyTax - fica - roth - trad;
-  return { gross:bG+mG, fedTax, stateTax, countyTax, fica, roth, trad, netAnnual, netMonthly:netAnnual/12, rothMonthly:roth/12 };
+  return { gross:bG+mG, fedTax, stateTax, countyTax, fica, roth, trad, netAnnual, netMonthly:netAnnual/12, rothMonthly:roth/12, taxableWages:incomeTaxableWages };
 }
 
 /* ============ CALC HELPERS ============ */
-const fmt = n => '$' + Math.round(n).toLocaleString();
+const fmt = n => '$' + (Math.round(n)||0).toLocaleString();
 const fmtK = n => Math.abs(n)>=1e6 ? '$'+(n/1e6).toFixed(2)+'M' : '$'+Math.round(n/1000)+'k';
 function monthKey(d){ return d.toISOString().slice(0,7); }
 function activeDebtPayment(debt, ym){ return (!debt.end || ym <= debt.end) ? debt.payment : 0; }
@@ -612,16 +612,16 @@ html(){
   </div>
   <div class="card"><h3>Brandon</h3>
     <div class="row"><span class="nm">Gross salary (annual)</span><input type="number" value="${i.brandonGross}" onchange="S.income.brandonGross=Number(this.value);save();renderContent()"></div>
-    <div class="row"><span class="nm">Traditional 401k %</span><input type="number" value="${i.brandonTrad401kPct||0}" step="0.5" onchange="S.income.brandonTrad401kPct=Number(this.value);save();renderContent()"></div>
-    <div class="row"><span class="nm">Roth 401k %</span><input type="number" value="${i.brandonRoth401kPct}" step="0.5" onchange="S.income.brandonRoth401kPct=Number(this.value);save();renderContent()"></div>
+    <div class="row"><span class="nm">Traditional 401k %</span><input type="number" value="${i.brandonTrad401kPct||0}" step="0.5" min="0" max="100" onchange="S.income.brandonTrad401kPct=Math.min(100,Math.max(0,Number(this.value)));save();renderContent()"></div>
+    <div class="row"><span class="nm">Roth 401k %</span><input type="number" value="${i.brandonRoth401kPct}" step="0.5" min="0" max="100" onchange="S.income.brandonRoth401kPct=Math.min(100,Math.max(0,Number(this.value)));save();renderContent()"></div>
     <div class="row"><span class="nm">Salary growth %/yr</span><input type="number" value="${i.brandonSalaryGrowthPct||3}" step="0.5" onchange="S.income.brandonSalaryGrowthPct=Number(this.value);save();renderContent()"></div>
     <div class="note">Trad 401k reduces taxable income. Roth is post-tax. Total 401k: ${fmt(i.brandonGross*(i.brandonTrad401kPct||0)/100 + i.brandonGross*i.brandonRoth401kPct/100)}/yr.</div>
   </div>
   <div class="card"><h3>Minsu</h3>
     <div class="row"><span class="nm">Gross salary (annual)</span><input type="number" value="${i.minsuGross}" onchange="S.income.minsuGross=Number(this.value);save();renderContent()"></div>
-    <div class="row"><span class="nm">Tips / non-taxable %</span><input type="number" value="${i.minsuNonTaxPct}" step="1" onchange="S.income.minsuNonTaxPct=Number(this.value);save();renderContent()"></div>
-    <div class="row"><span class="nm">Traditional 401k %</span><input type="number" value="${i.minsuTrad401kPct||0}" step="0.5" onchange="S.income.minsuTrad401kPct=Number(this.value);save();renderContent()"></div>
-    <div class="row"><span class="nm">Roth 401k %</span><input type="number" value="${i.minsuRoth401kPct}" step="0.5" onchange="S.income.minsuRoth401kPct=Number(this.value);save();renderContent()"></div>
+    <div class="row"><span class="nm">Tips / non-taxable %</span><input type="number" value="${i.minsuNonTaxPct}" step="1" min="0" max="100" onchange="S.income.minsuNonTaxPct=Math.min(100,Math.max(0,Number(this.value)));save();renderContent()"></div>
+    <div class="row"><span class="nm">Traditional 401k %</span><input type="number" value="${i.minsuTrad401kPct||0}" step="0.5" min="0" max="100" onchange="S.income.minsuTrad401kPct=Math.min(100,Math.max(0,Number(this.value)));save();renderContent()"></div>
+    <div class="row"><span class="nm">Roth 401k %</span><input type="number" value="${i.minsuRoth401kPct}" step="0.5" min="0" max="100" onchange="S.income.minsuRoth401kPct=Math.min(100,Math.max(0,Number(this.value)));save();renderContent()"></div>
     <div class="row"><span class="nm">Salary growth %/yr</span><input type="number" value="${i.minsuSalaryGrowthPct||3}" step="0.5" onchange="S.income.minsuSalaryGrowthPct=Number(this.value);save();renderContent()"></div>
     <div class="note">${fmt(mNonTax)}/yr excluded from income tax (still subject to FICA).</div>
   </div>
@@ -640,7 +640,8 @@ html(){
     <div class="row"><span class="nm">${i.taxCountyName||'County'} tax</span><span>${fmt(t.countyTax)}</span></div>
     <div class="row"><span class="nm">FICA (SS + Medicare)</span><span>${fmt(t.fica)}</span></div>
     <div class="row"><span class="nm">Additional withheld</span><input type="number" value="${i.additionalWithheld||0}" min="0" step="100" onchange="S.income.additionalWithheld=Number(this.value);save();renderContent()"></div>
-    <div class="row" style="margin-top:8px"><span class="nm" style="color:var(--gold)">Effective tax rate</span><span style="color:var(--gold)">${(totalTax/t.gross*100).toFixed(1)}%</span></div>
+    <p class="note" style="margin-top:6px">Taxable wages (gross − pre-tax 401k): ${fmt(t.taxableWages)} · Federal standard deduction: ${fmt(FED_STD)} MFJ</p>
+    <div class="row" style="margin-top:4px"><span class="nm" style="color:var(--gold)">Effective tax rate</span><span style="color:var(--gold)">${(totalTax/t.gross*100).toFixed(1)}%</span></div>
   </div>`;
 }};
 
