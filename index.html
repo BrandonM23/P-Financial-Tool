@@ -275,8 +275,9 @@ function calcHousehold(inc){
              + Math.max(0, bG+mG-ADD_MED_THRESH)*ADD_MED;
   const roth = bG*inc.brandonRoth401kPct/100 + mG*inc.minsuRoth401kPct/100;
   const trad = bTrad + mTrad;
-  const netAnnual = bG + mG - fedTax - stateTax - countyTax - fica - roth - trad;
-  return { gross:bG+mG, fedTax, stateTax, countyTax, fica, roth, trad, netAnnual, netMonthly:netAnnual/12, rothMonthly:roth/12, taxableWages:incomeTaxableWages };
+  const additionalWithheld = inc.additionalWithheld || 0;
+  const netAnnual = bG + mG - fedTax - stateTax - countyTax - fica - roth - trad - additionalWithheld;
+  return { gross:bG+mG, fedTax, stateTax, countyTax, fica, roth, trad, additionalWithheld, netAnnual, netMonthly:netAnnual/12, rothMonthly:roth/12, taxableWages:incomeTaxableWages };
 }
 
 /* ============ CALC HELPERS ============ */
@@ -401,7 +402,7 @@ function overviewDrillData(segment, p, t, isAnnual){
   const moMult  = isAnnual ? 12 : 1;  // monthly amounts; multiply by moMult for display period
   // Default: full allocation (shown when nothing or Discretionary is selected)
   if (!segment || segment==='Discretionary') {
-    const taxes = (t.fedTax+t.stateTax+t.countyTax+t.fica) / txScale;
+    const taxes = (t.fedTax+t.stateTax+t.countyTax+t.fica+t.additionalWithheld) / txScale;
     const roth  = t.roth / txScale;
     const debt  = p.debtPay;
     const exp   = p.exp;
@@ -424,10 +425,11 @@ function overviewDrillData(segment, p, t, isAnnual){
   }
   if (segment==='Taxes') {
     const taxItems = [
-      {l:'Federal', v:t.fedTax,    c:'#ef4444'},
-      {l:'State',   v:t.stateTax,  c:'#f97316'},
-      {l:'County',  v:t.countyTax, c:'#eab308'},
-      {l:'FICA',    v:t.fica,      c:'#ec4899'}
+      {l:'Federal',    v:t.fedTax,              c:'#ef4444'},
+      {l:'State',      v:t.stateTax,            c:'#f97316'},
+      {l:'County',     v:t.countyTax,           c:'#eab308'},
+      {l:'FICA',       v:t.fica,                c:'#ec4899'},
+      {l:'Additional', v:t.additionalWithheld,  c:'#6366f1'}
     ].filter(x=>x.v>0);
     return { labels:taxItems.map(x=>x.l), data:taxItems.map(x=>Math.round(x.v/txScale)), colors:taxItems.map(x=>x.c) };
   }
