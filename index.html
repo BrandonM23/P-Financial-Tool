@@ -848,10 +848,45 @@ html(){
   const ym = nowYM();
   const totBal = S.debts.reduce((a,d)=>a+Number(d.balance||0),0);
   const totPay = S.debts.reduce((a,d)=>a+activeDebtPayment(d,ym),0);
+
+  // lifetime cost per active debt
+  const active = S.debts.filter(d=>!d.end||d.end>=ym);
+  const debtRows = active.map(d=>{
+    const bal = Number(d.balance||0), pmt = Number(d.payment||0);
+    if (!d.end) return {name:d.name, bal, interest:0, total:bal, hasEnd:false};
+    const [ey,em]=d.end.split('-').map(Number), [ny,nm]=ym.split('-').map(Number);
+    const months = Math.max(0,(ey-ny)*12+(em-nm));
+    const totalPmts = pmt*months;
+    const interest = Math.max(0, totalPmts-bal);
+    return {name:d.name, bal, interest, total:Math.max(bal,totalPmts), months, hasEnd:true};
+  });
+  const totInterest = debtRows.reduce((a,r)=>a+r.interest,0);
+  const totLifetime = debtRows.reduce((a,r)=>a+r.total,0);
+
   return `
   <div class="kpi-row">
-    <div class="kpi"><div class="v neg">${fmt(totBal)}</div><div class="l">TOTAL DEBT</div></div>
-    <div class="kpi"><div class="v">${fmt(totPay)}</div><div class="l">ACTIVE MONTHLY PAYMENTS</div></div>
+    <div class="kpi"><div class="v neg">${fmt(totBal)}</div><div class="l">TOTAL BALANCE</div></div>
+    <div class="kpi"><div class="v neg">${fmt(totInterest)}</div><div class="l">EST. TOTAL INTEREST</div></div>
+    <div class="kpi"><div class="v">${fmt(totPay)}</div><div class="l">MONTHLY PAYMENTS</div></div>
+  </div>
+  <div class="card"><h3>Lifetime Cost Breakdown</h3>
+    <div style="position:relative;height:260px"><canvas id="debtPieChart"></canvas></div>
+    <table style="width:100%;border-collapse:collapse;margin-top:12px;font-size:12px">
+      <thead><tr style="color:var(--muted);text-align:right">
+        <th style="text-align:left;padding:4px 0;font-weight:500">Debt</th>
+        <th style="padding:4px 8px;font-weight:500">Balance</th>
+        <th style="padding:4px 8px;font-weight:500">Interest</th>
+        <th style="padding:4px 0;font-weight:500">Total cost</th>
+      </tr></thead>
+      <tbody>
+      ${debtRows.map(r=>`<tr style="border-top:1px solid var(--border)">
+        <td style="padding:5px 0">${r.name}</td>
+        <td style="text-align:right;padding:5px 8px">${fmt(r.bal)}</td>
+        <td style="text-align:right;padding:5px 8px;color:var(--neg)">${r.hasEnd?fmt(r.interest):'—'}</td>
+        <td style="text-align:right;padding:5px 0">${r.hasEnd?fmt(r.total):fmt(r.bal)}</td>
+      </tr>`).join('')}
+      </tbody>
+    </table>
   </div>
   <div class="card"><h3>Debt Line Items</h3>
   ${S.debts.map((d,i)=>`
@@ -865,8 +900,41 @@ html(){
       <div class="row" style="border:none;padding:3px 0"><span class="nm">End date ${d.end && d.end < ym ? '<span class="pos">(ended — excluded)</span>':''}</span><input type="month" value="${d.end||''}" onchange="S.debts[${i}].end=this.value;save();renderContent()"></div>
     </div>`).join('')}
   <div style="margin-top:10px"><button class="btn ghost sm" onclick="S.debts.push({name:'New debt',balance:0,payment:0,end:''});save();renderContent()">+ Add debt</button></div>
-  <p class="note" style="margin-top:8px">Payments roll into total outflows automatically and drop off after their end date (car loan disappears October 2026).</p>
+  <p class="note" style="margin-top:8px">Payments drop off automatically after their end date. Set accurate end dates to get correct interest estimates above.</p>
   </div>`;
+},
+after(){
+  const ym = nowYM();
+  const active = S.debts.filter(d=>!d.end||d.end>=ym);
+  const COLORS = ['#ef4444','#f97316','#eab308','#8b5cf6','#3b82f6','#10b981','#ec4899','#06b6d4'];
+
+  const slices = active.map((d,idx)=>{
+    const bal = Number(d.balance||0), pmt = Number(d.payment||0);
+    let total = bal;
+    if (d.end) {
+      const [ey,em]=d.end.split('-').map(Number), [ny,nm]=ym.split('-').map(Number);
+      const months = Math.max(0,(ey-ny)*12+(em-nm));
+      total = Math.max(bal, pmt*months);
+    }
+    return {label:d.name, value:Math.round(total), color:COLORS[idx%COLORS.length]};
+  }).filter(s=>s.value>0);
+
+  if (!slices.length || !document.getElementById('debtPieChart')) return;
+
+  charts.debtPie = new Chart(document.getElementById('debtPieChart'), {
+    type: 'doughnut',
+    data: {
+      labels: slices.map(s=>s.label),
+      datasets:[{ data: slices.map(s=>s.value), backgroundColor: slices.map(s=>s.color), borderWidth:2, borderColor:'var(--card)' }]
+    },
+    options:{
+      cutout:'58%',
+      plugins:{
+        legend:{ position:'bottom', labels:{ color:'#94a3b8', boxWidth:12, padding:14, font:{size:12} } },
+        tooltip:{ callbacks:{ label: ctx => ` ${ctx.label}: ${fmt(ctx.parsed)}` } }
+      }
+    }
+  });
 }};
 
 /* ============ NET WORTH ============ */
