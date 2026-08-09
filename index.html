@@ -851,6 +851,19 @@ after(){
 
 /* ============ DEBT ============ */
 const DEBT_COLORS = ['#ef4444','#f97316','#eab308','#8b5cf6','#3b82f6','#10b981','#ec4899','#06b6d4'];
+function saveDebtEnd(el, idx) {
+  const v = el.value.trim();
+  if (!v) { S.debts[idx].end = ''; save(); setTimeout(renderContent, 0); return; }
+  const m = /^(\d{1,2})-(\d{4})$/.exec(v);
+  if (m) {
+    S.debts[idx].end = m[2] + '-' + m[1].padStart(2, '0');
+    save();
+    setTimeout(renderContent, 0);
+  } else {
+    const stored = S.debts[idx].end;
+    el.value = stored ? stored.slice(5) + '-' + stored.slice(0, 4) : '';
+  }
+}
 const vDebt = {
 html(){
   const ym = nowYM();
@@ -933,7 +946,7 @@ html(){
       ` : `
       <div class="row" style="border:none;padding:3px 0"><span class="nm">Monthly payment</span><input type="number" value="${d.payment||0}" onfocus="this.select()" onchange="S.debts[${i}].payment=Number(this.value);save();renderContent()"></div>
       `}
-      <div class="row" style="border:none;padding:3px 0"><span class="nm">End date ${d.end && d.end < ym ? '<span class="pos">(ended — excluded)</span>':''}</span><input type="text" value="${d.end ? d.end.slice(5)+'-'+d.end.slice(0,4) : ''}" placeholder="MM-YYYY" maxlength="7" style="width:100px;text-align:center" onfocus="this.select()" onkeydown="if(event.key==='Enter')this.blur()" onblur="(function(el,idx){const v=el.value.trim();if(!v){S.debts[idx].end='';save();setTimeout(renderContent,0);return;}const m=/^(\d{1,2})-(\d{4})$/.exec(v);if(m){S.debts[idx].end=m[2]+'-'+m[1].padStart(2,'0');save();setTimeout(renderContent,0);}else{el.value=S.debts[idx].end?S.debts[idx].end.slice(5)+'-'+S.debts[idx].end.slice(0,4):'';}})(this,${i})"></div>
+      <div class="row" style="border:none;padding:3px 0"><span class="nm">End date ${d.end && d.end < ym ? '<span class="pos">(ended — excluded)</span>':''}</span><input type="text" value="${d.end ? d.end.slice(5)+'-'+d.end.slice(0,4) : ''}" placeholder="MM-YYYY" maxlength="7" style="width:100px;text-align:center" onfocus="this.select()" onkeydown="if(event.key==='Enter'){event.preventDefault();saveDebtEnd(this,${i});}" onblur="saveDebtEnd(this,${i})"></div>
     </div>`).join('')}
   <div style="margin-top:10px"><button class="btn ghost sm" onclick="S.debts.push({name:'New debt',balance:0,rate:0,payment:0,end:'',isMortgage:false,mortgagePrincipal:0,mortgageInterest:0,mortgageEscrow:0,mortgageExtra:0});save();renderContent()">+ Add debt</button></div>
   <p class="note" style="margin-top:8px">Mortgage: enter the P/I/escrow split from your statement. Interest calc uses P+I only — escrow is excluded. All payments drop off after their end date.</p>
