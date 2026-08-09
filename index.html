@@ -500,6 +500,7 @@ after(){
   wfLo.push(top-exp); wfHi.push(top); wfColors.push('#f59e0b'); top-=exp;
   wfLo.push(0); wfHi.push(disc); wfColors.push('#10b981');
 
+  const mobile = window.innerWidth <= 520;
   const barLabels = {
     id:'wfLabels',
     afterDatasetsDraw(chart){
@@ -507,13 +508,19 @@ after(){
       chart.getDatasetMeta(0).data.forEach((bar,i)=>{
         const val = wfHi[i]-wfLo[i];
         if (val<=0) return;
-        const cx = bar.x, cy = (bar.y + bar.base)/2;
         ctx.save();
-        ctx.fillStyle='#fff';
-        ctx.font='bold 13px sans-serif';
         ctx.textAlign='center';
-        ctx.textBaseline='middle';
-        ctx.fillText(fmt(val), cx, cy);
+        if (mobile) {
+          ctx.fillStyle='#f1f5f9';
+          ctx.font='bold 10px sans-serif';
+          ctx.textBaseline='bottom';
+          ctx.fillText(fmtK(val), bar.x, bar.y - 2);
+        } else {
+          ctx.fillStyle='#fff';
+          ctx.font='bold 13px sans-serif';
+          ctx.textBaseline='middle';
+          ctx.fillText(fmt(val), bar.x, (bar.y + bar.base)/2);
+        }
         ctx.restore();
       });
     }
@@ -529,6 +536,7 @@ after(){
     },
     options:{
       responsive:true, maintainAspectRatio:false,
+      layout:{ padding:{ top: mobile ? 18 : 0 } },
       onClick(evt, els){ if(els.length){ const seg=wfLabels[els[0].index]; overviewDrill=(seg==='Discretionary'||overviewDrill===seg)?null:seg; setTimeout(renderContent,0); } },
       plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:c=>` ${fmt(Math.abs(c.raw[1]-c.raw[0]))}` } } },
       scales:{
