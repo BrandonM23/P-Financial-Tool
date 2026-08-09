@@ -136,7 +136,7 @@ const DEFAULTS = {
   expenses: [ {name:'Housing costs', amt:1500}, {name:'Utilities', amt:300}, {name:'Food & dining', amt:800}, {name:'Transportation', amt:300}, {name:'Misc', amt:400} ],
   oneOffExpenses: [],
   expenseBenchmarkPct: 50,
-  debts: [ {name:'Mortgage', balance:250000, payment:1500, end:'2054-01'} ],
+  debts: [ {name:'Mortgage', balance:250000, payment:1500, end:'2054-01', rate:6.5} ],
   assets: [ {name:'Home value', amt:300000}, {name:'Retirement accounts', amt:100000}, {name:'Cash', amt:20000} ],
   retire: { monthlySpend:6000, withdrawalPct:4, returnPct:7, inflationPct:2.5, currentAge:35, currentNestEgg:100000, nestEggOverride:false, brandonSS:0, minsuSS:0, ssAge:67, brandonSSManual:false, minsuSSManual:false },
   goals: [ {name:'Emergency fund', target:30000, saved:10000, monthly:500} ],
@@ -163,7 +163,7 @@ const store = {
 };
 async function loadState(){
   const v = await store.get('finapp-state');
-  if (v) { try { S = JSON.parse(v); if(!S.portfolio)S.portfolio=DEFAULTS.portfolio; if(!S.sim)S.sim={...DEFAULTS.sim}; if(!S.oneOffExpenses)S.oneOffExpenses=[]; if(S.expenseBenchmarkPct==null)S.expenseBenchmarkPct=50; if(!S.retire.brandonSS)S.retire.brandonSS=0; if(!S.retire.minsuSS)S.retire.minsuSS=0; if(S.retire.ssAge==null)S.retire.ssAge=67; if(S.retire.brandonSSManual==null)S.retire.brandonSSManual=false; if(S.retire.minsuSSManual==null)S.retire.minsuSSManual=false; if(S.retire.nestEggOverride==null)S.retire.nestEggOverride=false; if(!S.income.taxState)S.income.taxState='NC'; if(S.income.taxCountyRate==null)S.income.taxCountyRate=0; if(S.income.brandonTrad401kPct==null)S.income.brandonTrad401kPct=0; if(S.income.minsuTrad401kPct==null)S.income.minsuTrad401kPct=0; if(S.income.taxCountyName==null)S.income.taxCountyName=''; if(S.income.additionalWithheld==null)S.income.additionalWithheld=0; if(S.income.brandonSalaryGrowthPct==null)S.income.brandonSalaryGrowthPct=S.income.salaryGrowthPct||3; if(S.income.minsuSalaryGrowthPct==null)S.income.minsuSalaryGrowthPct=S.income.salaryGrowthPct||3; return; } catch(e){} }
+  if (v) { try { S = JSON.parse(v); if(!S.portfolio)S.portfolio=DEFAULTS.portfolio; if(!S.sim)S.sim={...DEFAULTS.sim}; if(!S.oneOffExpenses)S.oneOffExpenses=[]; if(S.expenseBenchmarkPct==null)S.expenseBenchmarkPct=50; if(!S.retire.brandonSS)S.retire.brandonSS=0; if(!S.retire.minsuSS)S.retire.minsuSS=0; if(S.retire.ssAge==null)S.retire.ssAge=67; if(S.retire.brandonSSManual==null)S.retire.brandonSSManual=false; if(S.retire.minsuSSManual==null)S.retire.minsuSSManual=false; if(S.retire.nestEggOverride==null)S.retire.nestEggOverride=false; if(!S.income.taxState)S.income.taxState='NC'; if(S.income.taxCountyRate==null)S.income.taxCountyRate=0; if(S.income.brandonTrad401kPct==null)S.income.brandonTrad401kPct=0; if(S.income.minsuTrad401kPct==null)S.income.minsuTrad401kPct=0; if(S.income.taxCountyName==null)S.income.taxCountyName=''; if(S.income.additionalWithheld==null)S.income.additionalWithheld=0; if(S.income.brandonSalaryGrowthPct==null)S.income.brandonSalaryGrowthPct=S.income.salaryGrowthPct||3; if(S.income.minsuSalaryGrowthPct==null)S.income.minsuSalaryGrowthPct=S.income.salaryGrowthPct||3; S.debts.forEach(d=>{if(d.rate==null)d.rate=0;}); return; } catch(e){} }
   S = JSON.parse(JSON.stringify(DEFAULTS));
 }
 let saveTimer = null;
@@ -853,14 +853,25 @@ html(){
   // lifetime cost per active debt
   const active = S.debts.filter(d=>!d.end||d.end>=ym);
   const debtRows = active.map((d,i)=>{
-    const bal = Number(d.balance||0), pmt = Number(d.payment||0);
+    const bal = Number(d.balance||0), pmt = Number(d.payment||0), rate = Number(d.rate||0);
     const color = DEBT_COLORS[i % DEBT_COLORS.length];
-    if (!d.end) return {name:d.name, bal, interest:0, total:bal, hasEnd:false, color};
+    if (!d.end) return {name:d.name, bal, interest:0, total:bal, hasEnd:false, color, rate};
     const [ey,em]=d.end.split('-').map(Number), [ny,nm]=ym.split('-').map(Number);
     const months = Math.max(0,(ey-ny)*12+(em-nm));
-    const totalPmts = pmt*months;
-    const interest = Math.max(0, totalPmts-bal);
-    return {name:d.name, bal, interest, total:Math.max(bal,totalPmts), months, hasEnd:true, color};
+    let interest;
+    if (rate > 0) {
+      const mr = rate / 100 / 12;
+      let b = bal, totalInt = 0;
+      for (let m = 0; m < months; m++) {
+        const intChg = b * mr; totalInt += intChg;
+        b = Math.max(0, b + intChg - pmt);
+        if (b <= 0) break;
+      }
+      interest = Math.round(totalInt);
+    } else {
+      interest = Math.max(0, pmt * months - bal);
+    }
+    return {name:d.name, bal, interest, total:bal+interest, months, hasEnd:true, color, rate};
   });
   const totInterest = debtRows.reduce((a,r)=>a+r.interest,0);
   const totLifetime = debtRows.reduce((a,r)=>a+r.total,0);
@@ -886,7 +897,7 @@ html(){
             <div style="width:10px;height:10px;border-radius:2px;background:${r.color};flex-shrink:0"></div>
             <div style="flex:1;min-width:0;overflow:hidden">
               <div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.name}</div>
-              <div style="font-size:11px;color:var(--muted);margin-top:1px">${r.hasEnd?`${fmt(r.interest)} interest`:'no end date'}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:1px">${r.hasEnd?`${fmt(r.interest)} interest${r.rate?` @ ${r.rate}%`:' (est.)'}`:r.rate?`${r.rate}% rate`:'no end date'}</div>
             </div>
             <div style="text-align:right;flex-shrink:0">
               <div style="font-size:13px;font-weight:600">${r.hasEnd?fmt(r.total):fmt(r.bal)}</div>
@@ -904,10 +915,11 @@ html(){
         <button class="btn danger sm" onclick="S.debts.splice(${i},1);save();renderContent()">✕</button>
       </div>
       <div class="row" style="border:none;padding:3px 0"><span class="nm">Balance</span><input type="number" value="${d.balance}" onchange="S.debts[${i}].balance=Number(this.value);save();renderContent()"></div>
+      <div class="row" style="border:none;padding:3px 0"><span class="nm">Interest rate (%)</span><input type="number" value="${d.rate||0}" min="0" max="30" step="0.1" onchange="S.debts[${i}].rate=Number(this.value);save();renderContent()"></div>
       <div class="row" style="border:none;padding:3px 0"><span class="nm">Monthly payment</span><input type="number" value="${d.payment}" onchange="S.debts[${i}].payment=Number(this.value);save();renderContent()"></div>
       <div class="row" style="border:none;padding:3px 0"><span class="nm">End date ${d.end && d.end < ym ? '<span class="pos">(ended — excluded)</span>':''}</span><input type="month" value="${d.end||''}" onchange="S.debts[${i}].end=this.value;save();renderContent()"></div>
     </div>`).join('')}
-  <div style="margin-top:10px"><button class="btn ghost sm" onclick="S.debts.push({name:'New debt',balance:0,payment:0,end:''});save();renderContent()">+ Add debt</button></div>
+  <div style="margin-top:10px"><button class="btn ghost sm" onclick="S.debts.push({name:'New debt',balance:0,rate:0,payment:0,end:''});save();renderContent()">+ Add debt</button></div>
   <p class="note" style="margin-top:8px">Payments drop off automatically after their end date. Set accurate end dates to get correct interest estimates above.</p>
   </div>`;
 },
@@ -916,12 +928,23 @@ after(){
   const active = S.debts.filter(d=>!d.end||d.end>=ym);
 
   const slices = active.map((d,idx)=>{
-    const bal = Number(d.balance||0), pmt = Number(d.payment||0);
+    const bal = Number(d.balance||0), pmt = Number(d.payment||0), rate = Number(d.rate||0);
     let total = bal;
     if (d.end) {
       const [ey,em]=d.end.split('-').map(Number), [ny,nm]=ym.split('-').map(Number);
       const months = Math.max(0,(ey-ny)*12+(em-nm));
-      total = Math.max(bal, pmt*months);
+      if (rate > 0) {
+        const mr = rate / 100 / 12;
+        let b = bal, totalInt = 0;
+        for (let m = 0; m < months; m++) {
+          const intChg = b * mr; totalInt += intChg;
+          b = Math.max(0, b + intChg - pmt);
+          if (b <= 0) break;
+        }
+        total = bal + Math.round(totalInt);
+      } else {
+        total = Math.max(bal, pmt * months);
+      }
     }
     return {label:d.name, value:Math.round(total), color:DEBT_COLORS[idx%DEBT_COLORS.length]};
   }).filter(s=>s.value>0);

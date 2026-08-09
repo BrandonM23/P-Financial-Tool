@@ -69,27 +69,20 @@ exports, or committed files.
 ## Queued work (in priority order)
 1. Rename the "Cash Flow" tab group to "Budget". (Trivial — use it to validate the
    edit → commit → push → live loop.)
-2. MORTGAGE RESTRUCTURE (per Brandon, high priority):
-   - Add a Mortgage section on the Budget tab: inputs = balance, interest rate, years
-     remaining, OR a manually-entered monthly payment (manual entry must be supported —
-     Brandon prefers just typing the real number).
-   - The mortgage payment rolls into the total EXPENSES figure (not a separate debt
-     payment line) so all monthly outflows tie together in one place.
-   - REMOVE the mortgage from the Debt tab's line items (Debt keeps student loans,
-     personal loan — the ones with rates that matter for payoff decisions).
-   - The mortgage BALANCE must still feed Net Worth as a liability so the Home Equity
-     card and equity math keep working. Single source of truth: the Mortgage section.
-   - Watch for double-counting: after this change, mortgage payment must appear in
-     outflows exactly once.
-3. EXPENSE CATEGORIES: add a `category` field to each expense line item from a fixed
+2. EXPENSE CATEGORIES: add a `category` field to each expense line item from a fixed
    taxonomy (Housing, Food, Transport, Childcare, Utilities, Discretionary, Other).
    Prerequisite for actuals tracking. Requires a migration guard in loadState().
-4. ACTUALS TRACKING — DEFERRED, do not build yet. Scope when built: bank CSV import,
+3. ACTUALS TRACKING — DEFERRED, do not build yet. Scope when built: bank CSV import,
    map merchants to the fixed category taxonomy, per-category actual-vs-budget chart,
-   Claude summarizes variance. Prerequisites: #3 above; decide storage (the single
+   Claude summarizes variance. Prerequisites: #2 above; decide storage (the single
    state blob is likely insufficient at transaction volume — Supabase free tier is the
    fallback); resolve Minsu's accounts (the import-only ownership model breaks if her
    spending isn't in the feed).
+
+## Decisions made
+- Mortgage stays on the Debt tab alongside other debts (no separate section).
+  Each debt has a `rate` field (annual %, e.g. 6.5); interest is computed via
+  month-by-month amortization. Back-calc fallback used only when rate = 0.
 
 ## Deployment
 Repo: github.com/BrandonM23/P-Financial-Tool (public) — serves index.html via GitHub
