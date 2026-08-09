@@ -843,6 +843,7 @@ after(){
 }};
 
 /* ============ DEBT ============ */
+const DEBT_COLORS = ['#ef4444','#f97316','#eab308','#8b5cf6','#3b82f6','#10b981','#ec4899','#06b6d4'];
 const vDebt = {
 html(){
   const ym = nowYM();
@@ -851,14 +852,15 @@ html(){
 
   // lifetime cost per active debt
   const active = S.debts.filter(d=>!d.end||d.end>=ym);
-  const debtRows = active.map(d=>{
+  const debtRows = active.map((d,i)=>{
     const bal = Number(d.balance||0), pmt = Number(d.payment||0);
-    if (!d.end) return {name:d.name, bal, interest:0, total:bal, hasEnd:false};
+    const color = DEBT_COLORS[i % DEBT_COLORS.length];
+    if (!d.end) return {name:d.name, bal, interest:0, total:bal, hasEnd:false, color};
     const [ey,em]=d.end.split('-').map(Number), [ny,nm]=ym.split('-').map(Number);
     const months = Math.max(0,(ey-ny)*12+(em-nm));
     const totalPmts = pmt*months;
     const interest = Math.max(0, totalPmts-bal);
-    return {name:d.name, bal, interest, total:Math.max(bal,totalPmts), months, hasEnd:true};
+    return {name:d.name, bal, interest, total:Math.max(bal,totalPmts), months, hasEnd:true, color};
   });
   const totInterest = debtRows.reduce((a,r)=>a+r.interest,0);
   const totLifetime = debtRows.reduce((a,r)=>a+r.total,0);
@@ -870,23 +872,29 @@ html(){
     <div class="kpi"><div class="v">${fmt(totPay)}</div><div class="l">MONTHLY PAYMENTS</div></div>
   </div>
   <div class="card"><h3>Lifetime Cost Breakdown</h3>
-    <div style="position:relative;height:260px"><canvas id="debtPieChart"></canvas></div>
-    <table style="width:100%;border-collapse:collapse;margin-top:12px;font-size:12px">
-      <thead><tr style="color:var(--muted);text-align:right">
-        <th style="text-align:left;padding:4px 0;font-weight:500">Debt</th>
-        <th style="padding:4px 8px;font-weight:500">Balance</th>
-        <th style="padding:4px 8px;font-weight:500">Interest</th>
-        <th style="padding:4px 0;font-weight:500">Total cost</th>
-      </tr></thead>
-      <tbody>
-      ${debtRows.map(r=>`<tr style="border-top:1px solid var(--border)">
-        <td style="padding:5px 0">${r.name}</td>
-        <td style="text-align:right;padding:5px 8px">${fmt(r.bal)}</td>
-        <td style="text-align:right;padding:5px 8px;color:var(--neg)">${r.hasEnd?fmt(r.interest):'—'}</td>
-        <td style="text-align:right;padding:5px 0">${r.hasEnd?fmt(r.total):fmt(r.bal)}</td>
-      </tr>`).join('')}
-      </tbody>
-    </table>
+    <div style="display:flex;gap:24px;align-items:center">
+      <div style="position:relative;flex:0 0 170px;height:170px">
+        <canvas id="debtPieChart"></canvas>
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;gap:2px">
+          <div style="font-size:14px;font-weight:700;color:var(--fg)">${fmt(totLifetime)}</div>
+          <div style="font-size:10px;color:var(--muted);letter-spacing:.04em">LIFETIME COST</div>
+        </div>
+      </div>
+      <div style="flex:1;min-width:0">
+        ${debtRows.length ? debtRows.map(r=>`
+          <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">
+            <div style="width:10px;height:10px;border-radius:2px;background:${r.color};flex-shrink:0"></div>
+            <div style="flex:1;min-width:0;overflow:hidden">
+              <div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.name}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:1px">${r.hasEnd?`${fmt(r.interest)} interest`:'no end date'}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              <div style="font-size:13px;font-weight:600">${r.hasEnd?fmt(r.total):fmt(r.bal)}</div>
+              <div style="font-size:11px;color:var(--muted)">${totLifetime>0?(r.total/totLifetime*100).toFixed(0)+'%':'—'}</div>
+            </div>
+          </div>`).join('') : '<p class="note">No active debts.</p>'}
+      </div>
+    </div>
   </div>
   <div class="card"><h3>Debt Line Items</h3>
   ${S.debts.map((d,i)=>`
@@ -906,7 +914,6 @@ html(){
 after(){
   const ym = nowYM();
   const active = S.debts.filter(d=>!d.end||d.end>=ym);
-  const COLORS = ['#ef4444','#f97316','#eab308','#8b5cf6','#3b82f6','#10b981','#ec4899','#06b6d4'];
 
   const slices = active.map((d,idx)=>{
     const bal = Number(d.balance||0), pmt = Number(d.payment||0);
@@ -916,7 +923,7 @@ after(){
       const months = Math.max(0,(ey-ny)*12+(em-nm));
       total = Math.max(bal, pmt*months);
     }
-    return {label:d.name, value:Math.round(total), color:COLORS[idx%COLORS.length]};
+    return {label:d.name, value:Math.round(total), color:DEBT_COLORS[idx%DEBT_COLORS.length]};
   }).filter(s=>s.value>0);
 
   if (!slices.length || !document.getElementById('debtPieChart')) return;
@@ -928,9 +935,9 @@ after(){
       datasets:[{ data: slices.map(s=>s.value), backgroundColor: slices.map(s=>s.color), borderWidth:2, borderColor:'var(--card)' }]
     },
     options:{
-      cutout:'58%',
+      cutout:'62%',
       plugins:{
-        legend:{ position:'bottom', labels:{ color:'#94a3b8', boxWidth:12, padding:14, font:{size:12} } },
+        legend:{ display:false },
         tooltip:{ callbacks:{ label: ctx => ` ${ctx.label}: ${fmt(ctx.parsed)}` } }
       }
     }
